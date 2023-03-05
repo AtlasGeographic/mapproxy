@@ -1348,6 +1348,26 @@ class CacheConfiguration(ConfigurationBase):
             return CompactCacheV2(cache_dir=cache_dir)
 
         raise ConfigurationError("compact cache only supports version 1 or 2")
+    
+    def _compactgcs_cache(self, grid_conf, file_ext):
+        from mapproxy.cache.compactgcs import CompactCacheGCS
+
+        bucket_name = self.conf['cache'].get('bucket_name', 'mapproxy')
+        credential_file = self.conf['cache'].get('credential_file','')
+
+        cache_dir = self.cache_dir()
+        if self.conf.get('cache', {}).get('directory'):
+            if self.has_multiple_grids():
+                raise ConfigurationError(
+                    "using single directory for cache with multiple grids in %s" %
+                    (self.conf['name']),
+                )
+            pass
+        else:
+            cache_dir = os.path.join(cache_dir, self.conf['name'], grid_conf.tile_grid().name)
+        
+        return CompactCacheGCS(cache_dir=cache_dir, bucket_name=bucket_name, credential_file=credential_file)
+
 
     def _tile_cache(self, grid_conf, file_ext):
         if self.conf.get('disable_storage', False):

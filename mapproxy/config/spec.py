@@ -183,6 +183,11 @@ cache_types = {
         required('version'): number(),
         'tile_lock_dir': str(),
     },
+    'compactgcs': {
+        'bucket_name': str(),
+        'credential_file': str(),
+        'tile_lock_dir': str(),
+    },
     'azureblob': {
         'connection_string': str(),
         'container_name': str(),

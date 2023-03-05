@@ -27,6 +27,8 @@ from mapproxy.util.lock import FileLock
 from mapproxy.compat import BytesIO
 
 from google.cloud import storage
+from google.cloud.storage.fileio import BlobReader
+from google.cloud.storage.fileio import BlobWriter
 
 import logging
 log = logging.getLogger(__name__)
@@ -354,8 +356,9 @@ class BundleV2(object):
             blob = self.bucket.blob(self.filename)
             if blob.exists() == False:
                 raise errno.ENOENT
-            with blob.open('rb') as fh:
-                yield fh
+            yield BlobReader(blob)
+            #with blob.open('rb') as fh:
+                #yield fh
             #with open(self.filename, 'rb') as fh:
             #    yield fh
         except IOError as ex:
@@ -369,7 +372,8 @@ class BundleV2(object):
     def _readwrite(self):
         self._init_index()
         blob = self.bucket(self.filename)
-        with blob.open('r+b') as fh:
-            yield fh
+        yield BlobWriter(blob)
+        #with blob.open('r+b') as fh:
+        #    yield fh
         #with open(self.filename, 'r+b') as fh:
         #    yield fh

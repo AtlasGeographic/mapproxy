@@ -19,6 +19,7 @@ import hashlib
 import os
 import shutil
 import struct
+import io
 
 from mapproxy.image import ImageSource
 from mapproxy.cache.base import TileCacheBase, tile_buffer
@@ -86,7 +87,7 @@ class CompactCacheGCS(TileCacheBase):
 
     def _get_bundle(self, tile_coord):
         bundle_fname, offset = self._get_bundle_fname_and_offset(tile_coord)
-        return self.bundle_class(bundle_fname, self.bucket, offset=offset)
+        return self.bundle_class(bundle_fname, self.bucket, self.client, offset=offset)
 
     def is_cached(self, tile, dimensions=None):
         if tile.coord is None:
@@ -170,11 +171,12 @@ class CompactCacheGCS(TileCacheBase):
 
 
 class BundleV2(object):
-    def __init__(self, base_filename, bucket, offset=None):
+    def __init__(self, base_filename, bucket, client, offset=None):
         # offset not used by V2
         self.filename = base_filename + '.bundle'
         self.lock_filename = base_filename + '.lck'
         self.bucket = bucket
+        self.client = client
 
         # defer initialization to update/remove calls to avoid
         # index creation on is_cached (prevents new files in read-only caches)
@@ -205,8 +207,12 @@ class BundleV2(object):
 
     def _tile_offset_size(self, fh, x, y):
         idx_offset = self._tile_idx_offset(x, y)
-        fh.seek(idx_offset)
-        val = INT64LE.unpack(fh.read(8))[0]
+        buffer = io.BytesIO()
+        fh.download_to_file(buffer, start=idx_offset, end= idx_offset + 8)
+        buffer.seek(0)
+        #fh.seek(idx_offset)
+        #val = INT64LE.unpack(fh.read(8))[0]
+        val = INT64LE.unpack(buffer.read(8))[0]
         # Index contains 8 bytes per tile.
         # Size is stored in 24 most significant bits.
         # Offset in the least significant 40 bits.
@@ -225,8 +231,13 @@ class BundleV2(object):
         if not size:
             return False
 
-        fh.seek(offset)
-        data = fh.read(size)
+        #fh.seek(offset)
+        #data = fh.read(size)
+        buffer = io.BytesIO()
+        fh.download_to_file(buffer, start=offset, end= offset + size)
+        buffer.seek(0)
+        data = buffer.read()
+
 
         tile.source = ImageSource(BytesIO(data))
         return True
@@ -347,16 +358,19 @@ class BundleV2(object):
                     _, size = self._tile_offset_size(fh, x, y)
                     if size:
                         total_size += size + 4
-            fh.seek(0, os.SEEK_END)
-            actual_size = fh.tell()
+            #fh.seek(0, os.SEEK_END)
+            #actual_size = fh.tell()
+            actual_size=fh.size
             return total_size + 64 + BUNDLE_V2_INDEX_SIZE, actual_size
     @contextlib.contextmanager
     def _readonly(self):
         try:
-            blob = self.bucket.blob(self.filename)
+            blob = self.bucket.get_blob(self.filename)
+            if blob == None:
+                raise errno.ENOENT
             if blob.exists() == False:
                 raise errno.ENOENT
-            yield BlobReader(blob)
+            yield blob #  BlobReader(blob)
             #with blob.open('rb') as fh:
                 #yield fh
             #with open(self.filename, 'rb') as fh:

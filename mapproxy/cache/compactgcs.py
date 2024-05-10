@@ -70,9 +70,13 @@ class CompactCacheGCS(TileCacheBase):
     def __init__(self, cache_dir, bucket_name, credential_file):
         self.lock_cache_id = 'compactgcscache-' + hashlib.md5(cache_dir.encode('utf-8')).hexdigest()
         self.cache_dir = cache_dir
-        self.client = storage.Client.from_service_account_json(credential_file)
-        self.bucket = self.client.bucket(bucket_name)
-        self.bundle_class = BundleV2
+        try:
+            self.client = storage.Client.from_service_account_json(credential_file)
+            self.bucket = self.client.bucket(bucket_name)
+            self.bundle_class = BundleV2
+        except Exception as ex:
+            log.error("Error: %s" % ex)
+            raise ex
 
     def _get_bundle_fname_and_offset(self, tile_coord):
         x, y, z = tile_coord

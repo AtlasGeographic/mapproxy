@@ -208,11 +208,13 @@ class BundleV2(object):
     def _tile_offset_size(self, fh, x, y):
         idx_offset = self._tile_idx_offset(x, y)
         buffer = io.BytesIO()
-        fh.download_to_file(buffer, start=idx_offset, end= idx_offset + 8)
-        buffer.seek(0)
-        #fh.seek(idx_offset)
-        #val = INT64LE.unpack(fh.read(8))[0]
-        val = INT64LE.unpack(buffer.read(8))[0]
+        
+        #fh.download_to_file(buffer, start=idx_offset, end= idx_offset + 8)
+        #buffer.seek(0)
+        fh.seek(idx_offset)
+        val = INT64LE.unpack(fh.read(8))[0]
+        #val = INT64LE.unpack(buffer.read(8))[0]
+
         # Index contains 8 bytes per tile.
         # Size is stored in 24 most significant bits.
         # Offset in the least significant 40 bits.
@@ -231,12 +233,12 @@ class BundleV2(object):
         if not size:
             return False
 
-        #fh.seek(offset)
-        #data = fh.read(size)
-        buffer = io.BytesIO()
-        fh.download_to_file(buffer, start=offset, end= offset + size)
-        buffer.seek(0)
-        data = buffer.read()
+        fh.seek(offset)
+        data = fh.read(size)
+        #buffer = io.BytesIO()
+        #fh.download_to_file(buffer, start=offset, end= offset + size)
+        #buffer.seek(0)
+        #data = buffer.read()
 
 
         tile.source = ImageSource(BytesIO(data))
@@ -358,9 +360,9 @@ class BundleV2(object):
                     _, size = self._tile_offset_size(fh, x, y)
                     if size:
                         total_size += size + 4
-            #fh.seek(0, os.SEEK_END)
-            #actual_size = fh.tell()
-            actual_size=fh.size
+            fh.seek(0, os.SEEK_END)
+            actual_size = fh.tell()
+            #actual_size=fh.size
             return total_size + 64 + BUNDLE_V2_INDEX_SIZE, actual_size
     @contextlib.contextmanager
     def _readonly(self):
@@ -370,7 +372,8 @@ class BundleV2(object):
                 raise errno.ENOENT
             if blob.exists() == False:
                 raise errno.ENOENT
-            yield blob #  BlobReader(blob)
+            #yield blob
+            yield BlobReader(blob, 256 * 1024)
             #with blob.open('rb') as fh:
                 #yield fh
             #with open(self.filename, 'rb') as fh:

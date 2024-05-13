@@ -16,9 +16,10 @@
 """
 Service requests (parsing, handling, etc).
 """
-from mapproxy.compat import PY2, iteritems, text_type
-from mapproxy.compat.modules import parse_qsl, urlparse, quote
+from urllib.parse import parse_qsl, quote
+
 from mapproxy.util.py import cached_property
+
 
 class NoCaseMultiDict(dict):
     """
@@ -32,17 +33,18 @@ class NoCaseMultiDict(dict):
     >>> 'a' in d and 'b' in d
     True
     """
+
     def _gen_dict(self, mapping=()):
         """A `NoCaseMultiDict` can be constructed from an iterable of
         ``(key, value)`` tuples or a dict.
         """
         tmp = {}
         if isinstance(mapping, NoCaseMultiDict):
-            for key, value in mapping.iteritems(): #pylint: disable-msg=E1103
+            for key, value in mapping.iteritems():
                 tmp.setdefault(key.lower(), (key, []))[1].extend(value)
         else:
             if isinstance(mapping, dict):
-                itr = iteritems(mapping)
+                itr = mapping.items()
             else:
                 itr = iter(mapping)
             for key, value in itr:
@@ -59,7 +61,7 @@ class NoCaseMultiDict(dict):
         """A `NoCaseMultiDict` can be updated from an iterable of
         ``(key, value)`` tuples or a dict.
         """
-        for _, (key, values) in iteritems(self._gen_dict(mapping)):
+        for _, (key, values) in self._gen_dict(mapping).items():
             self.set(key, values, append=append, unpack=True)
 
     def __getitem__(self, key):
@@ -146,12 +148,8 @@ class NoCaseMultiDict(dict):
         """
         Iterates over all keys and values.
         """
-        if PY2:
-            for _, (key, values) in dict.iteritems(self):
-                yield key, values
-        else:
-            for _, (key, values) in dict.items(self):
-                yield key, values
+        for _, (key, values) in dict.items(self):
+            yield key, values
 
     def copy(self):
         """
@@ -173,17 +171,13 @@ def url_decode(qs, charset='utf-8', decode_keys=False, include_empty=True,
     """
     tmp = []
     for key, value in parse_qsl(qs, include_empty):
-        if PY2:
-            if decode_keys:
-                key = key.decode(charset, errors)
-            tmp.append((key, value.decode(charset, errors)))
-        else:
-            if not isinstance(key, text_type):
-                key = key.decode(charset, errors)
-            if not isinstance(value, text_type):
-                value = value.decode(charset, errors)
-            tmp.append((key, value))
+        if not isinstance(key, str):
+            key = key.decode(charset, errors)
+        if not isinstance(value, str):
+            value = value.decode(charset, errors)
+        tmp.append((key, value))
     return NoCaseMultiDict(tmp)
+
 
 class Request(object):
     charset = 'utf8'
@@ -196,7 +190,7 @@ class Request(object):
         if script_name:
             del environ['HTTP_X_SCRIPT_NAME']
             environ['SCRIPT_NAME'] = script_name
-            path_info = environ['PATH_INFO']
+            path_info = environ.get('PATH_INFO', '')
             if path_info.startswith(script_name):
                 environ['PATH_INFO'] = path_info[len(script_name):]
 
@@ -210,8 +204,6 @@ class Request(object):
     @property
     def path(self):
         path = self.environ.get('PATH_INFO', '')
-        if PY2:
-            return path
         if path and isinstance(path, bytes):
             path = path.decode('utf-8')
         return path
@@ -244,7 +236,7 @@ class Request(object):
             return host
         result = self.environ['SERVER_NAME']
         if ((self.url_scheme, self.environ['SERVER_PORT'])
-            not in (('https', '443'), ('http', '80'))):
+                not in (('https', '443'), ('http', '80'))):
             result += ':' + self.environ['SERVER_PORT']
         return result
 
@@ -271,22 +263,20 @@ class Request(object):
         "Full script URL without trailing /"
         return (self.host_url.rstrip('/') +
                 quote(self.environ.get('SCRIPT_NAME', '/').rstrip('/'))
-               )
-    
+                )
+
     @property
     def server_script_url(self):
         "Internal script URL"
-        return self.script_url.replace(
-            self.host_url.rstrip('/'),
-            self.server_url.rstrip('/')
-        )
+        return self.server_url.rstrip('/')
 
     @property
     def base_url(self):
         return (self.host_url.rstrip('/')
                 + quote(self.environ.get('SCRIPT_NAME', '').rstrip('/'))
                 + quote(self.environ.get('PATH_INFO', ''))
-               )
+                )
+
 
 class RequestParams(object):
     """
@@ -299,6 +289,7 @@ class RequestParams(object):
     :param param: A dict or ``NoCaseMultiDict``.
     """
     params = None
+
     def __init__(self, param=None):
         self.delimiter = ','
 
@@ -344,7 +335,7 @@ class RequestParams(object):
                                  (self.__class__.__name__, name))
 
     def __getitem__(self, key):
-        return self.delimiter.join(map(text_type, self.params.get_all(key)))
+        return self.delimiter.join(map(str, self.params.get_all(key)))
 
     def __setitem__(self, key, value):
         """
@@ -356,10 +347,9 @@ class RequestParams(object):
         if key in self:
             del self.params[key]
 
-
     def iteritems(self):
         for key, values in self.params.iteritems():
-            yield key, self.delimiter.join((text_type(x) for x in values))
+            yield key, self.delimiter.join((str(x) for x in values))
 
     def __contains__(self, key):
         return self.params and key in self.params
@@ -378,7 +368,7 @@ class RequestParams(object):
         """
         kv_pairs = []
         for key, values in self.params.iteritems():
-            value = ','.join(text_type(v) for v in values)
+            value = ','.join(str(v) for v in values)
             kv_pairs.append(key + '=' + quote(value.encode('utf-8'), safe=','))
         return '&'.join(kv_pairs)
 
@@ -391,6 +381,7 @@ class RequestParams(object):
             if value != [None]:
                 new.set(key, value, unpack=True)
         return new
+
 
 class BaseRequest(object):
     """
@@ -426,10 +417,9 @@ class BaseRequest(object):
     @property
     def raw_params(self):
         params = {}
-        for key, value in iteritems(self.params):
+        for key, value in self.params.items():
             params[key] = value
         return params
-
 
     @property
     def query_string(self):
@@ -461,6 +451,7 @@ class BaseRequest(object):
     def __repr__(self):
         return '%s(param=%r, url=%r)' % (self.__class__.__name__, self.params, self.url)
 
+
 def split_mime_type(mime_type):
     """
     >>> split_mime_type('text/xml; charset=utf-8')
@@ -473,4 +464,3 @@ def split_mime_type(mime_type):
     if ';' in mime_type:
         mime_type, options = [part.strip() for part in mime_type.split(';', 2)]
     return mime_class, mime_type, options
-

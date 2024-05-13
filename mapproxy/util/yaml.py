@@ -15,20 +15,22 @@
 
 from __future__ import absolute_import
 
-from mapproxy.compat import string_type
 import yaml
+
 
 class YAMLError(Exception):
     pass
+
 
 def load_yaml_file(file_or_filename):
     """
     Load yaml from file object or filename.
     """
-    if isinstance(file_or_filename, string_type):
+    if isinstance(file_or_filename, str):
         with open(file_or_filename, 'rb') as f:
             return load_yaml(f)
     return load_yaml(file_or_filename)
+
 
 def _load_yaml(doc):
     # try different methods to load yaml
@@ -44,6 +46,7 @@ def _load_yaml(doc):
     except (yaml.scanner.ScannerError, yaml.parser.ParserError) as ex:
         raise YAMLError(str(ex))
 
+
 def load_yaml(doc):
     """
     Load yaml from file object or string.
@@ -53,4 +56,3 @@ def load_yaml(doc):
         # all configs are dicts, raise YAMLError to prevent later AttributeErrors (#352)
         raise YAMLError("configuration not a YAML dictionary")
     return data
-

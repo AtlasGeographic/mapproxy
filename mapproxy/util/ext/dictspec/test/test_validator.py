@@ -25,7 +25,7 @@ import unittest
 
 from ..validator import validate, ValidationError, SpecError
 from ..spec import required, one_of, number, recursive, type_spec, anything
-from mapproxy.compat import string_type
+
 
 def raises(exception):
     def wrapper(f):
@@ -37,6 +37,7 @@ def raises(exception):
             else:
                 raise AssertionError('expected exception %s', exception)
     return wrapper
+
 
 class TestSimpleDict(unittest.TestCase):
     def test_validate_simple_dict(self):
@@ -73,7 +74,7 @@ class TestSimpleDict(unittest.TestCase):
         validate(spec, {'hello': []})
 
     def test_instances_and_types(self):
-        spec = {'str()': str(), 'string_type': string_type, 'int': int, 'int()': int()}
+        spec = {'str()': str(), 'string_type': str, 'int': int, 'int()': int()}
         validate(spec, {'str()': 'str', 'string_type': u'☃', 'int': 1, 'int()': 1})
 
 
@@ -91,6 +92,7 @@ class TestLists(unittest.TestCase):
         spec = [1]
         validate(spec, [1, 'hello'])
 
+
 class TestNumber(unittest.TestCase):
     def check_valid(self, spec, data):
         validate(spec, data)
@@ -99,6 +101,7 @@ class TestNumber(unittest.TestCase):
         spec = number()
         for i in (0, 1, 23e999, int(10e20), 23.1, -0.0000000001):
             self.check_valid(spec, i)
+
 
 class TestNested(unittest.TestCase):
     def check_valid(self, spec, data):
@@ -130,10 +133,9 @@ class TestNested(unittest.TestCase):
 
         self.check_valid(spec, {'globals': {'image': {'format': {'png': {'mode': 'P'}}}}})
         self.check_valid(spec, {'globals': {'image': {'format': {'png': {'mode': 'P'}}},
-                                                   'cache': {'base_dir': '/somewhere'}}})
+                                            'cache': {'base_dir': '/somewhere'}}})
         self.check_invalid(spec, {'globals': {'image': {'foo': {'png': {'mode': 'P'}}}}})
         self.check_invalid(spec, {'globals': {'image': {'png': {'png': {'mode': 1}}}}})
-
 
     def test_errors_in_unicode_keys(self):
         # should not raise UnicodeEncodeError
@@ -141,6 +143,7 @@ class TestNested(unittest.TestCase):
             anything(): str(),
         }
         self.check_invalid(spec, {u'globalü': 12})
+
 
 class TestRecursive(unittest.TestCase):
     def test(self):
@@ -153,10 +156,12 @@ class TestRecursive(unittest.TestCase):
         validate(spec, {'a': {'hello': 'world', 'more': {'hello': 'foo', 'more': {'more': {}}}}})
         validate(spec, {'b': {'foo': {'foo': {}}},
                         'a': {'hello': 'world', 'more': {'hello': 'foo', 'more': {'more': {}}}}})
+
     @raises(SpecError)
     def test_without_spec(self):
         spec = {'a': recursive()}
         validate(spec, {'a': {'a': {}}})
+
 
 class TestTypeSpec(unittest.TestCase):
     def test(self):
@@ -194,7 +199,7 @@ class TestTypeSpec(unittest.TestCase):
 
 class TestErrors(unittest.TestCase):
     def test_invalid_types(self):
-        spec = {'str': str, 'str()': str(), 'string_type': string_type, '1': 1, 'int': int}
+        spec = {'str': str, 'str()': str(), 'string_type': str, '1': 1, 'int': int}
         try:
             validate(spec, {'str': 1, 'str()': 1, 'string_type': 1, '1': 'a', 'int': 'int'})
         except ValidationError as ex:
@@ -203,9 +208,7 @@ class TestErrors(unittest.TestCase):
             assert ex.errors[1] == "'int' in int not of type int"
             assert ex.errors[2] == '1 in str not of type str'
             assert ex.errors[3] == '1 in str() not of type str'
-            assert ex.errors[4] in (
-                '1 in string_type not of type basestring', #PY2
-                '1 in string_type not of type str') #PY3
+            assert ex.errors[4] == '1 in string_type not of type str'
         else:
             assert False
 
@@ -256,10 +259,11 @@ class TestErrors(unittest.TestCase):
         else:
             assert False
 
+
 def test_one_of_with_custom_types():
     # test for fixed validation of one_of specs with values that are
     # not lists or dicts (e.g. recursive)
-    spec = one_of([str], recursive({required('foo'): string_type}))
+    spec = one_of([str], recursive({required('foo'): str}))
     validate(spec, ['foo', 'bar'])
     validate(spec, {'foo': 'bar'})
     try:
@@ -269,6 +273,6 @@ def test_one_of_with_custom_types():
     else:
         assert False
 
+
 if __name__ == '__main__':
     unittest.main()
-

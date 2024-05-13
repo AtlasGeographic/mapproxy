@@ -31,9 +31,10 @@ from mapproxy.util.coverage import (
     union_coverage,
     intersection_coverage,
 )
-from mapproxy.compat import string_type
+
 
 bbox_string_re = re.compile(r'[-+]?\d*.?\d+,[-+]?\d*.?\d+,[-+]?\d*.?\d+,[-+]?\d*.?\d+')
+
 
 def load_coverage(conf, base_path=None):
     clip = False
@@ -74,7 +75,7 @@ def load_coverage(conf, base_path=None):
     elif 'bbox' in conf:
         srs = conf.get('bbox_srs') or conf['srs']
         bbox = conf['bbox']
-        if isinstance(bbox, string_type):
+        if isinstance(bbox, str):
             bbox = [float(x) for x in bbox.split(',')]
         geom = None
     elif 'datasource' in conf:

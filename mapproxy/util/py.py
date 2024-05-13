@@ -17,28 +17,22 @@
 Python related helper functions.
 """
 from functools import wraps
-from mapproxy.compat import PY2
+
 
 def reraise_exception(new_exc, exc_info):
     """
     Reraise exception (`new_exc`) with the given `exc_info`.
     """
     _exc_class, _exc, tb = exc_info
-    if PY2:
-        exec('raise new_exc.__class__, new_exc, tb')
-    else:
-        raise new_exc.with_traceback(tb)
+    raise new_exc.with_traceback(tb)
+
 
 def reraise(exc_info):
     """
     Reraise exception from exc_info`.
     """
     exc_class, exc, tb = exc_info
-    if PY2:
-        exec('raise exc_class, exc, tb')
-    else:
-        raise exc.with_traceback(tb)
-
+    raise exc.with_traceback(tb)
 
 
 class cached_property(object):
@@ -67,6 +61,7 @@ class cached_property(object):
         setattr(obj, self.__name__, value)
         return value
 
+
 def memoize(func):
     @wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -78,4 +73,3 @@ def memoize(func):
             cache[key] = func(self, *args, **kwargs)
         return cache[key]
     return wrapper
-

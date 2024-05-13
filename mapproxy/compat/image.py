@@ -26,11 +26,13 @@ try:
     Image, ImageColor, ImageDraw, ImageFont, ImagePalette, ImageChops, ImageMath
     ImageFileDirectory_v2, TiffTags
     PIL_VERSION = getattr(PIL, '__version__') or getattr(PIL, 'PILLOW_VERSION')
+    PIL_VERSION_TUPLE = tuple(int(i) for i in PIL_VERSION.split("."))
 except ImportError:
     # allow MapProxy to start without PIL (for tilecache only).
     # issue warning and raise ImportError on first use of
     # a function that requires PIL
     warnings.warn('PIL is not available')
+
     class NoPIL(object):
         def __getattr__(self, name):
             if name.startswith('__'):
@@ -48,8 +50,10 @@ except ImportError:
     ImageColor.getrgb = lambda x: x
     PIL_VERSION = None
 
+
 def has_alpha_composite_support():
     return hasattr(Image, 'alpha_composite')
+
 
 def transform_uses_center():
     # transformation behavior changed with Pillow 3.4 to use pixel centers
@@ -58,6 +62,7 @@ def transform_uses_center():
         return False
     return True
 
+
 def quantize_pil(img, colors=256, alpha=False, defaults=None):
     if hasattr(Image, 'FASTOCTREE'):
         if not alpha:
@@ -65,10 +70,10 @@ def quantize_pil(img, colors=256, alpha=False, defaults=None):
         img = img.quantize(colors, Image.FASTOCTREE)
     else:
         if alpha:
-            img.load() # split might fail if image is not loaded
+            img.load()  # split might fail if image is not loaded
             alpha = img.split()[3]
             img = img.convert('RGB').convert('P', palette=Image.ADAPTIVE, colors=colors-1)
-            mask = Image.eval(alpha, lambda a: 255 if a <=128 else 0)
+            mask = Image.eval(alpha, lambda a: 255 if a <= 128 else 0)
             img.paste(255, mask)
             if defaults is not None:
                 defaults['transparency'] = 255
@@ -76,4 +81,6 @@ def quantize_pil(img, colors=256, alpha=False, defaults=None):
             img = img.convert('RGB').convert('P', palette=Image.ADAPTIVE, colors=colors)
 
     return img
+
+
 quantize = quantize_pil

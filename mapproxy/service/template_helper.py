@@ -14,13 +14,13 @@
 # limitations under the License.
 
 from mapproxy.template import bunch
-from mapproxy.compat.modules import escape
 
-__all__ = ['escape', 'indent', 'bunch', 'wms100format', 'wms100info_format',
-    'wms111metadatatype']
+__all__ = ['indent', 'bunch', 'wms100format', 'wms100info_format', 'wms111metadatatype']
+
 
 def indent(text, n=2):
-  return '\n'.join(' '*n + line for line in text.split('\n'))
+    return '\n'.join(' '*n + line for line in text.split('\n'))
+
 
 def wms100format(format):
     """
@@ -35,6 +35,7 @@ def wms100format(format):
     else:
         return None
 
+
 def wms100info_format(format):
     """
     >>> wms100info_format('text/html')
@@ -45,6 +46,7 @@ def wms100info_format(format):
     if format in ('application/vnd.ogc.gml', 'text/xml'):
         return 'GML.1'
     return 'MIME'
+
 
 def wms111metadatatype(type):
     if type == 'ISO19115:2003':

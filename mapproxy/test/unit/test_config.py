@@ -18,21 +18,20 @@ from mapproxy.config import Options, base_config, load_base_config
 from mapproxy.test.helper import TempFiles
 
 
-def teardown_module():
-    load_base_config(clear_existing=True)
-
 class TestOptions(object):
     def test_update_overwrite(self):
         d = Options(foo='bar', baz=4)
         d.update(Options(baz=5))
         assert d.baz == 5
         assert d.foo == 'bar'
+
     def test_update_new(self):
         d = Options(foo='bar', baz=4)
         d.update(Options(biz=5))
         assert d.baz == 4
         assert d.biz == 5
         assert d.foo == 'bar'
+
     def test_update_recursive(self):
         d = Options(
             foo='bar',
@@ -41,12 +40,16 @@ class TestOptions(object):
         assert d.foo == 'bar'
         assert d.baz.ham == 2
         assert d.baz.eggs == 5
+
     def test_compare(self):
         assert Options(foo=4) == Options(foo=4)
         assert Options(foo=Options(bar=4)) == Options(foo=Options(bar=4))
 
 
 class TestDefaultsLoading(object):
+    def teardown_method(self):
+        load_base_config(clear_existing=True)
+
     defaults_yaml = b"""
     foo:
         bar:
@@ -67,6 +70,7 @@ class TestDefaultsLoading(object):
             assert base_config().foo.bar.ham == 2
             assert base_config().foo.bar.eggs == 4
             assert not hasattr(base_config(), 'wms')
+
     def test_defaults_overwrite(self):
         with TempFiles(2) as tmp:
             with open(tmp[0], 'wb') as f:
@@ -92,9 +96,8 @@ class TestDefaultsLoading(object):
 
 
 class TestSRSConfig(object):
-    def setup(self):
-        import mapproxy.config.config
-        mapproxy.config.config._config.pop()
+    def teardown_method(self):
+        load_base_config(clear_existing=True)
 
     def test_user_srs_definitions(self):
         user_yaml = b"""
@@ -110,8 +113,6 @@ class TestSRSConfig(object):
             assert 'EPSG:9999' in base_config().srs.axis_order_ne
             assert 'EPSG:9999' not in base_config().srs.axis_order_en
 
-            #defaults still there
+            # defaults still there
             assert 'EPSG:31468' in base_config().srs.axis_order_ne
             assert 'CRS:84' in base_config().srs.axis_order_en
-
-

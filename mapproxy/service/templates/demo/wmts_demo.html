@@ -1,5 +1,5 @@
 {{py:
-from mapproxy.compat.modules import escape
+from html import escape
 import textwrap
 
 wrapper = textwrap.TextWrapper(replace_whitespace=False, width=90,
@@ -22,7 +22,8 @@ jscript_functions=None
 
         const transparent = "{{if format == 'image/png'}}true{{endif}}";
         const srs = "{{srs}}";
-        const extent = [{{', '.join(str(r) for r in layer.grid.bbox)}}];
+        const grid_extent = [{{', '.join(str(r) for r in layer.grid.bbox)}}];
+        const extent = [{{', '.join(str(r) for r in layer.bbox)}}];
         const resolutions = [{{', '.join(str(r) for r in resolutions)}}];
         const matrixIds = [];
         for (let z = 0; z < resolutions.length; ++z) {
@@ -51,15 +52,19 @@ jscript_functions=None
             transparent: transparent === "true" ? true: false,
             style: '',
             tileGrid: new ol.tilegrid.WMTS({
-                origin: ol.extent.getTopLeft(extent),
+                origin: ol.extent.getTopLeft(grid_extent),
                 resolutions: resolutions,
                 matrixIds
             })
         });
 
+        const background_source = new ol.source.XYZ({
+            url: "{{background_url}}"
+        });
+
         const layers = [
             new ol.layer.Tile({
-                source: new ol.source.OSM()
+                source: background_source
             }),
             new ol.layer.Tile({source})
         ];
@@ -107,4 +112,4 @@ jscript_functions=None
             <button class="mapBtn" onclick="zoomToFullExtent()">Zoom to full extent</button>
             <button class="mapBtn" onclick="toogleBackgroundMap()">Toggle background map</button>
             <h3>Bounding Box</h3>
-            <p class="code">{{', '.join(str(s) for s in layer.grid.bbox)}}</p>
+            <p class="code">{{', '.join(str(s) for s in layer.extent.bbox)}}</p>

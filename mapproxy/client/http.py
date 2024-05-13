@@ -18,34 +18,21 @@ Tile retrieval (WMS, TMS, etc.).
 """
 import sys
 import time
-import warnings
 
 from mapproxy.version import version
 from mapproxy.image import ImageSource
 from mapproxy.util.py import reraise_exception
 from mapproxy.client.log import log_request
-from mapproxy.compat import PY2
-from mapproxy.compat.modules import urlparse
 
-if PY2:
-    import urllib2
-    from urllib2 import URLError, HTTPError, HTTPCookieProcessor
-    import httplib
-    from cookielib import CookieJar
-else:
-    from urllib import request as urllib2
-    from urllib.error import URLError, HTTPError
-    from urllib.request import HTTPCookieProcessor
-    from http import client as httplib
-    from http.cookiejar import CookieJar
+from urllib import request as urllib2
+from urllib.error import URLError, HTTPError
+from urllib.request import HTTPCookieProcessor
+from http import client as httplib
+from http.cookiejar import CookieJar
 
 import socket
 import ssl
 
-supports_ssl_default_context = False
-if hasattr(ssl, 'create_default_context'):
-    # Python >=2.7.9 and >=3.4.0
-    supports_ssl_default_context = True
 
 class HTTPClientError(Exception):
     def __init__(self, arg, response_code=None, full_msg=None):
@@ -55,24 +42,15 @@ class HTTPClientError(Exception):
 
 
 def build_https_handler(ssl_ca_certs, insecure):
-    if supports_ssl_default_context:
-        # python >=2.7.9 and >=3.4 supports ssl context in
-        # HTTPSHandler use this
-        if insecure:
-            ctx = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
-            ctx.verify_mode = ssl.CERT_NONE
-        elif ssl_ca_certs:
-            ctx = ssl.create_default_context(cafile=ssl_ca_certs)
-        else:
-            ctx = ssl.create_default_context()
-        return urllib2.HTTPSHandler(context=ctx)
+    if insecure:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    elif ssl_ca_certs:
+        ctx = ssl.create_default_context(cafile=ssl_ca_certs)
     else:
-        if insecure:
-            return None
-        else:
-            connection_class = verified_https_connection_with_ca_certs(
-                ssl_ca_certs)
-            return VerifiedHTTPSHandler(connection_class=connection_class)
+        ctx = ssl.create_default_context()
+    return urllib2.HTTPSHandler(context=ctx)
 
 
 class VerifiedHTTPSConnection(httplib.HTTPSConnection):
@@ -131,6 +109,7 @@ class _URLOpenerCache(object):
     Caches and reuses opener if possible (i.e. if they share the same
     ssl_ca_certs).
     """
+
     def __init__(self):
         self._opener = {}
 
@@ -163,7 +142,9 @@ class _URLOpenerCache(object):
 
         return opener
 
+
 create_url_opener = _URLOpenerCache()
+
 
 class HTTPClient(object):
     def __init__(self, url=None, username=None, password=None, insecure=False,
@@ -173,11 +154,9 @@ class HTTPClient(object):
         if url and url.startswith('https'):
             if insecure:
                 ssl_ca_certs = None
-            elif ssl_ca_certs is None and not supports_ssl_default_context:
-                    raise HTTPClientError('No ca_certs file set (http.ssl_ca_certs). '
-                        'Set file or disable verification with http.ssl_no_cert_checks option.')
 
-        self.opener = create_url_opener(ssl_ca_certs, url, username, password, insecure=insecure, manage_cookies=manage_cookies)
+        self.opener = create_url_opener(ssl_ca_certs, url, username, password,
+                                        insecure=insecure, manage_cookies=manage_cookies)
         self.header_list = headers.items() if headers else []
         self.hide_error_details = hide_error_details
 
@@ -192,7 +171,7 @@ class HTTPClient(object):
         for key, value in self.header_list:
             req.add_header(key, value)
         if method:
-            req.method=method
+            req.method = method
         try:
             start_time = time.time()
             if self._timeout is not None:
@@ -248,6 +227,7 @@ class HTTPClient(object):
                 response_code=response_code,
             )
 
+
 def auth_data_from_url(url):
     """
     >>> auth_data_from_url('invalid_url')
@@ -301,6 +281,7 @@ def open_url(url):
     http_client = HTTPClient(url, username, password)
     return http_client.open(url)
 
+
 def retrieve_image(url, client=None):
     """
     Retrive an image from `url`.
@@ -312,4 +293,3 @@ def retrieve_image(url, client=None):
     if not resp.headers['content-type'].startswith('image'):
         raise HTTPClientError('response is not an image: (%s)' % (resp.read()))
     return ImageSource(resp)
-

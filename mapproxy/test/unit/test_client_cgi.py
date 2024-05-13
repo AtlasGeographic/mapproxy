@@ -25,23 +25,27 @@ from mapproxy.client.cgi import CGIClient, split_cgi_response
 from mapproxy.client.http import HTTPClientError
 from mapproxy.source import SourceError
 
+
 @pytest.mark.skipif(sys.version_info < (3, 0), reason="tests skipped for python 2")
 class TestSplitHTTPResponse(object):
     def test_n(self):
-        assert split_cgi_response(b'header1: foo\nheader2: bar\n\ncontent\n\ncontent')  == \
+        assert split_cgi_response(b'header1: foo\nheader2: bar\n\ncontent\n\ncontent') == \
             ({'Header1': 'foo', 'Header2': 'bar'}, b'content\n\ncontent')
+
     def test_rn(self):
-        assert split_cgi_response(b'header1\r\nheader2\r\n\r\ncontent\r\n\r\ncontent')  == \
+        assert split_cgi_response(b'header1\r\nheader2\r\n\r\ncontent\r\n\r\ncontent') == \
             ({'Header1': None, 'Header2': None}, b'content\r\n\r\ncontent')
+
     def test_mixed(self):
-        assert split_cgi_response(b'header1: bar:foo\r\nheader2\n\r\ncontent\r\n\r\ncontent')  == \
+        assert split_cgi_response(b'header1: bar:foo\r\nheader2\n\r\ncontent\r\n\r\ncontent') == \
             ({'Header1': 'bar:foo', 'Header2': None}, b'content\r\n\r\ncontent')
-        assert split_cgi_response(b'header1\r\nheader2\n\ncontent\r\n\r\ncontent')  == \
+        assert split_cgi_response(b'header1\r\nheader2\n\ncontent\r\n\r\ncontent') == \
             ({'Header1': None, 'Header2': None}, b'content\r\n\r\ncontent')
-        assert split_cgi_response(b'header1\nheader2\r\n\r\ncontent\r\n\r\ncontent')  == \
+        assert split_cgi_response(b'header1\nheader2\r\n\r\ncontent\r\n\r\ncontent') == \
             ({'Header1': None, 'Header2': None}, b'content\r\n\r\ncontent')
+
     def test_no_header(self):
-        assert split_cgi_response(b'content\r\ncontent')  == \
+        assert split_cgi_response(b'content\r\ncontent') == \
             ({}, b'content\r\ncontent')
 
 
@@ -61,13 +65,14 @@ if not os.path.exists('testfile'):
     exit(2)
 """
 
+
 @pytest.mark.skipif(sys.platform == 'win32', reason="tests not ported to windows")
 @pytest.mark.skipif(sys.version_info < (3, 0), reason="tests skipped for python 2")
 class TestCGIClient(object):
-    def setup(self):
+    def setup_method(self):
         self.script_dir = tempfile.mkdtemp()
 
-    def teardown(self):
+    def teardown_method(self):
         shutil.rmtree(self.script_dir)
 
     def create_script(self, script=TEST_CGI_SCRIPT, executable=True):
@@ -133,4 +138,3 @@ class TestCGIClient(object):
         # start in tmp_work_dir
         client = CGIClient(script, working_directory=tmp_work_dir)
         client.open('http://example.org/service?hello=bar')
-

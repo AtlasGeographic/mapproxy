@@ -93,7 +93,7 @@ class TestNoCaseMultiDict(object):
 
     def test_get(self):
         nc_dict = NoCaseMultiDict([("foo", "bar"), ("num", "42")])
-        assert nc_dict.get("bar") == None
+        assert nc_dict.get("bar") is None
         assert nc_dict.get("bar", "default_bar") == "default_bar"
         assert nc_dict.get("num") == "42"
         assert nc_dict.get("num", type_func=int) == 42
@@ -137,7 +137,7 @@ class TestNoCaseMultiDict(object):
         nc_dict = NoCaseMultiDict([("foo", "bar"), ("num", "42")])
         assert nc_dict["fOO"] == "bar"
         del nc_dict["FOO"]
-        assert nc_dict.get("foo") == None
+        assert nc_dict.get("foo") is None
 
 
 class DummyRequest(object):
@@ -149,7 +149,7 @@ class DummyRequest(object):
 
 class TestWMSMapRequest(object):
 
-    def setup(self):
+    def setup_method(self):
         self.base_req = url_decode(
             """SERVICE=WMS&format=image%2Fpng&layers=foo&styles=&
 REQUEST=GetMap&height=300&srs=EPSG%3A4326&VERSION=1.1.1&
@@ -161,8 +161,8 @@ bbox=7,50,8,51&width=400""".replace(
 
 class TestWMS100MapRequest(TestWMSMapRequest):
 
-    def setup(self):
-        TestWMSMapRequest.setup(self)
+    def setup_method(self):
+        TestWMSMapRequest.setup_method(self)
         del self.base_req["service"]
         del self.base_req["version"]
         self.base_req["wmtver"] = "1.0.0"
@@ -184,8 +184,8 @@ class TestWMS111MapRequest(TestWMSMapRequest):
 
 class TestWMS130MapRequest(TestWMSMapRequest):
 
-    def setup(self):
-        TestWMSMapRequest.setup(self)
+    def setup_method(self):
+        TestWMSMapRequest.setup_method(self)
         self.base_req["version"] = "1.3.0"
         self.base_req["crs"] = self.base_req["srs"]
         del self.base_req["srs"]
@@ -221,8 +221,8 @@ class TestWMS130MapRequest(TestWMSMapRequest):
 
 class TestWMS111FeatureInfoRequest(TestWMSMapRequest):
 
-    def setup(self):
-        TestWMSMapRequest.setup(self)
+    def setup_method(self):
+        TestWMSMapRequest.setup_method(self)
         self.base_req["request"] = "GetFeatureInfo"
         self.base_req["x"] = "100"
         self.base_req["y"] = "150"
@@ -368,11 +368,11 @@ class TestArcGISIndentifyRequest(object):
 
 class TestRequest(object):
 
-    def setup(self):
+    def setup_method(self):
         self.env = {
             "HTTP_HOST": "localhost:5050",
             "PATH_INFO": "/service",
-            "QUERY_STRING": "LAYERS=osm_mapnik&FORMAT=image%2Fpng&SPHERICALMERCATOR=true&SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&EXCEPTIONS=application%2Fvnd.ogc.se_inimage&SRS=EPSG%3A900913&bbox=1013566.9382067363,7051939.297837454,1030918.1436243634,7069577.142111099&WIDTH=908&HEIGHT=923",
+            "QUERY_STRING": "LAYERS=osm_mapnik&FORMAT=image%2Fpng&SPHERICALMERCATOR=true&SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&STYLES=&EXCEPTIONS=application%2Fvnd.ogc.se_inimage&SRS=EPSG%3A900913&bbox=1013566.9382067363,7051939.297837454,1030918.1436243634,7069577.142111099&WIDTH=908&HEIGHT=923",  # noqa
             "REMOTE_ADDR": "127.0.0.1",
             "REQUEST_METHOD": "GET",
             "SCRIPT_NAME": "",
@@ -461,7 +461,7 @@ def test_maprequest_from_request():
 
 class TestWMSMapRequestParams(object):
 
-    def setup(self):
+    def setup_method(self):
         self.m = WMSMapRequestParams(
             url_decode(
                 "layers=bar&bBOx=-90,-80,70.0, 80&format=image/png"
@@ -480,7 +480,7 @@ class TestWMSMapRequestParams(object):
         assert self.m["width"] == "250"
         assert self.m["height"] == "350"
         del self.m["width"]
-        assert self.m.size == None
+        assert self.m.size is None
 
     def test_format(self):
         assert self.m.format == "png"
@@ -500,9 +500,9 @@ class TestWMSMapRequestParams(object):
         assert self.m.bbox is None
 
     def test_transparent(self):
-        assert self.m.transparent == False
+        assert self.m.transparent is False
         self.m["transparent"] = "trUe"
-        assert self.m.transparent == True
+        assert self.m.transparent is True
 
     def test_transparent_bool(self):
         self.m["transparent"] = True
@@ -620,7 +620,7 @@ BBOX=8,4,9,5&WIDTH=984&HEIGHT=708""".replace(
         )
     )
 
-    def setup(self):
+    def setup_method(self):
         self.req = Request(self.env)
 
     def test_valid_request(self):
@@ -654,7 +654,7 @@ BBOX=8,4,9,5&WIDTH=984&HEIGHT=708""".replace(
 
 class TestSRSAxisOrder(object):
 
-    def setup(self):
+    def setup_method(self):
         params111 = url_decode(
             """LAYERS=foo&FORMAT=image%2Fjpeg&SERVICE=WMS&
 VERSION=1.1.1&REQUEST=GetMap&STYLES=&EXCEPTIONS=application%2Fvnd.ogc.se_xml&
@@ -712,7 +712,7 @@ class TestTileRequest(object):
         tile_req = tile_request(req)
         assert isinstance(tile_req, TileRequest)
         assert tile_req.tile == (2, 3, 5)
-        assert tile_req.origin == None
+        assert tile_req.origin is None
         assert tile_req.format == "png"
         assert tile_req.layer == "osm"
         assert tile_req.dimensions == {}

@@ -21,8 +21,10 @@ from contextlib import contextmanager
 
 from mapproxy.util.lock import FileLock, cleanup_lockdir, DummyLock
 
+
 class CacheBackendError(Exception):
     pass
+
 
 @contextmanager
 def tile_buffer(tile):
@@ -35,6 +37,7 @@ def tile_buffer(tile):
     data.seek(0)
     tile.stored = True
 
+
 class TileCacheBase(object):
     """
     Base implementation of a tile cache.
@@ -42,13 +45,16 @@ class TileCacheBase(object):
 
     supports_timestamp = True
 
+    def __init__(self, coverage=None) -> None:
+        self.coverage = coverage
+
     def load_tile(self, tile, with_metadata=False, dimensions=None):
         raise NotImplementedError()
 
     def load_tiles(self, tiles, with_metadata=False, dimensions=None):
         all_succeed = True
         for tile in tiles:
-             if not self.load_tile(tile, with_metadata=with_metadata, dimensions=dimensions):
+            if not self.load_tile(tile, with_metadata=with_metadata, dimensions=dimensions):
                 all_succeed = False
         return all_succeed
 
@@ -82,11 +88,13 @@ class TileCacheBase(object):
         """
         raise NotImplementedError()
 
+
 # whether we immediately remove lock files or not
 REMOVE_ON_UNLOCK = True
 if sys.platform == 'win32':
     # windows does not handle this well
     REMOVE_ON_UNLOCK = False
+
 
 class TileLocker(object):
     def __init__(self, lock_dir, lock_timeout, lock_cache_id):
@@ -106,6 +114,6 @@ class TileLocker(object):
             return DummyLock()
         lock_filename = self.lock_filename(tile)
         cleanup_lockdir(self.lock_dir, max_lock_time=self.lock_timeout + 10,
-            force=False)
+                        force=False)
         return FileLock(lock_filename, timeout=self.lock_timeout,
-            remove_on_unlock=REMOVE_ON_UNLOCK)
+                        remove_on_unlock=REMOVE_ON_UNLOCK)

@@ -17,11 +17,11 @@ from __future__ import print_function
 
 import sys
 import optparse
+from io import BytesIO
+from urllib.parse import urlparse
 
 from xml import etree
 
-from mapproxy.compat import iteritems, BytesIO
-from mapproxy.compat.modules import urlparse
 from mapproxy.client.http import open_url, HTTPClientError
 from mapproxy.request.base import BaseRequest, url_decode
 from mapproxy.util.ext import wmsparse
@@ -46,7 +46,7 @@ class PrettyPrinter(object):
     def _format_output(self, key, value, indent, mark_first=False):
         if key == 'bbox':
             self.print_line(indent, key)
-            for srs_code, bbox in iteritems(value):
+            for srs_code, bbox in value.items():
                 self.print_line(indent+self.indent, srs_code, value=bbox, mark_first=mark_first)
         else:
             if isinstance(value, set):
@@ -74,7 +74,7 @@ class PrettyPrinter(object):
                     else:
                         self._format_output(item, layer[item], indent)
             # print remaining items except sublayers
-            for key, value in iteritems(layer):
+            for key, value in layer.items():
                 if key in self.print_order or key == 'layers':
                     continue
                 self._format_output(key, value, indent)
@@ -83,11 +83,13 @@ class PrettyPrinter(object):
                 self.print_line(indent, 'layers')
                 self.print_layers(layer, indent=indent+self.indent)
 
+
 def log_error(msg, *args):
     print(msg % args, file=sys.stderr)
 
+
 def wms_capapilities_url(url, version):
-    parsed_url = urlparse.urlparse(url)
+    parsed_url = urlparse(url)
     base_req = BaseRequest(
         url=url.split('?', 1)[0],
         param=url_decode(parsed_url.query),
@@ -98,15 +100,19 @@ def wms_capapilities_url(url, version):
     base_req.params['request'] = 'GetCapabilities'
     return base_req.complete_url
 
+
 def parse_capabilities(fileobj, version='1.1.1'):
     try:
         return wmsparse.parse_capabilities(fileobj)
     except ValueError as ex:
-        log_error('%s\n%s\n%s\n%s\nNot a capabilities document: %s', 'Recieved document:', '-'*80, fileobj.getvalue(), '-'*80, ex.args[0])
+        log_error('%s\n%s\n%s\n%s\nNot a capabilities document: %s',
+                  'Recieved document:', '-'*80, fileobj.getvalue(), '-'*80, ex.args[0])
         sys.exit(1)
     except etree.ElementTree.ParseError as ex:
-        log_error('%s\n%s\n%s\n%s\nCould not parse the document: %s', 'Recieved document:', '-'*80, fileobj.getvalue(), '-'*80, ex.args[0])
+        log_error('%s\n%s\n%s\n%s\nCould not parse the document: %s',
+                  'Recieved document:', '-'*80, fileobj.getvalue(), '-'*80, ex.args[0])
         sys.exit(1)
+
 
 def parse_capabilities_url(url, version='1.1.1'):
     try:
@@ -120,18 +126,20 @@ def parse_capabilities_url(url, version='1.1.1'):
     capabilities = BytesIO(capabilities_response.read())
     return parse_capabilities(capabilities, version=version)
 
+
 def wms_capabilities_command(args=None):
     parser = optparse.OptionParser("%prog wms-capabilities [options] URL",
-        description="Read and parse WMS 1.1.1 capabilities and print out"
-        " information about each layer. It does _not_ return a valid"
-        " MapProxy configuration.")
+                                   description="Read and parse WMS 1.1.1 capabilities and print out"
+                                   " information about each layer. It does _not_ return a valid"
+                                   " MapProxy configuration.")
     parser.add_option("--host", dest="capabilities_url",
-        help="WMS Capabilites URL")
-    parser.add_option("--version", dest="version",
-        choices=['1.1.1', '1.3.0'], default='1.1.1', help="Request GetCapabilities-document in version 1.1.1 or 1.3.0", metavar="<1.1.1 or 1.3.0>")
+                      help="WMS Capabilites URL")
+    parser.add_option(
+        "--version", dest="version", choices=['1.1.1', '1.3.0'], default='1.1.1',
+        help="Request GetCapabilities-document in version 1.1.1 or 1.3.0", metavar="<1.1.1 or 1.3.0>")
 
     if args:
-        args = args[1:] # remove script name
+        args = args[1:]  # remove script name
 
     (options, args) = parser.parse_args(args)
     if not options.capabilities_url:

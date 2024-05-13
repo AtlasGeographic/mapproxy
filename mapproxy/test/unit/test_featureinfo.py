@@ -34,7 +34,7 @@ from mapproxy.test.helper import strip_whitespace
 
 class TestXSLTransformer(object):
 
-    def setup(self):
+    def setup_method(self):
         fd, self.xsl_script = tempfile.mkstemp(".xsl")
         os.close(fd)
         xsl = (
@@ -54,7 +54,7 @@ class TestXSLTransformer(object):
         with open(self.xsl_script, "wb") as f:
             f.write(xsl)
 
-    def teardown(self):
+    def teardown_method(self):
         os.remove(self.xsl_script)
 
     def test_transformer(self):
@@ -123,13 +123,13 @@ class TestXMLFeatureInfoDocs(object):
 
 class TestXMLFeatureInfoDocsNoLXML(object):
 
-    def setup(self):
+    def setup_method(self):
         from mapproxy import featureinfo
 
         self.old_etree = featureinfo.etree
         featureinfo.etree = None
 
-    def teardown(self):
+    def teardown_method(self):
         from mapproxy import featureinfo
 
         featureinfo.etree = self.old_etree
@@ -191,13 +191,13 @@ class TestHTMLFeatureInfoDocs(object):
 
 class TestHTMLFeatureInfoDocsNoLXML(object):
 
-    def setup(self):
+    def setup_method(self):
         from mapproxy import featureinfo
 
         self.old_etree = featureinfo.etree
         featureinfo.etree = None
 
-    def teardown(self):
+    def teardown_method(self):
         from mapproxy import featureinfo
 
         featureinfo.etree = self.old_etree
@@ -238,10 +238,32 @@ class TestCombineDocs(object):
             JSONFeatureInfoDoc("{}"),
             JSONFeatureInfoDoc('{"results": [{"foo": 1}]}'),
             JSONFeatureInfoDoc('{"results": [{"bar": 2}]}'),
+            JSONFeatureInfoDoc("{}"),
         ]
         result, infotype = combine_docs(docs, None)
 
         assert """{"results": [{"foo": 1}, {"bar": 2}]}""" == result
+        assert infotype == "json"
+
+    def test_combine_json_with_null_response(self):
+        docs = [
+            JSONFeatureInfoDoc("null"),
+            JSONFeatureInfoDoc('{"results": [{"foo": 1}]}'),
+            JSONFeatureInfoDoc("null"),
+        ]
+        result, infotype = combine_docs(docs, None)
+
+        assert """{"results": [{"foo": 1}]}""" == result
+        assert infotype == "json"
+
+    def test_combine_json_with_only_empty_responses(self):
+        docs = [
+            JSONFeatureInfoDoc("{}"),
+            JSONFeatureInfoDoc("{}"),
+        ]
+        result, infotype = combine_docs(docs, None)
+
+        assert """{}""" == result
         assert infotype == "json"
 
     def test_combine_xml(self):

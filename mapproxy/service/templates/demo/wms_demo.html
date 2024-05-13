@@ -1,5 +1,5 @@
 {{py:
-from mapproxy.compat.modules import escape
+from html import escape
 import textwrap
 
 wrapper = textwrap.TextWrapper(replace_whitespace=False, width=90,
@@ -42,9 +42,13 @@ jscript_functions=None
             }
         });
 
+        const background_source = new ol.source.XYZ({
+            url: "{{background_url}}"
+        });
+
         const layers = [
             new ol.layer.Tile({
-                source: new ol.source.OSM()
+                source: background_source
             }),
             new ol.layer.Image({source})
         ];

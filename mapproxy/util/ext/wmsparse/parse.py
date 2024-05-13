@@ -4,7 +4,6 @@ import math
 from .util import resolve_ns
 
 from xml.etree import ElementTree as etree
-from mapproxy.compat import string_type
 from mapproxy.request.wms import switch_bbox_epsg_axis_order
 
 
@@ -15,7 +14,6 @@ class WMSCapabilities(object):
     }
 
     version = None
-
 
     def __init__(self, tree):
         self.tree = tree
@@ -38,11 +36,11 @@ class WMSCapabilities(object):
 
     def metadata(self):
         md = dict(
-            name = self.findtext(self.tree, 'Service/Name'),
-            title = self.findtext(self.tree, 'Service/Title'),
-            abstract = self.findtext(self.tree, 'Service/Abstract'),
-            fees = self.findtext(self.tree, 'Service/Fees'),
-            access_constraints = self.findtext(self.tree, 'Service/AccessConstraints'),
+            name=self.findtext(self.tree, 'Service/Name'),
+            title=self.findtext(self.tree, 'Service/Title'),
+            abstract=self.findtext(self.tree, 'Service/Abstract'),
+            fees=self.findtext(self.tree, 'Service/Fees'),
+            access_constraints=self.findtext(self.tree, 'Service/AccessConstraints'),
         )
         elem = self.find(self.tree, 'Service/OnlineResource')
         if elem is not None:
@@ -56,21 +54,20 @@ class WMSCapabilities(object):
         if elem is None or len(elem) == 0:
             elem = etree.Element(None)
         md = dict(
-            person = self.findtext(elem, 'ContactPersonPrimary/ContactPerson'),
-            organization = self.findtext(elem, 'ContactPersonPrimary/ContactOrganization'),
-            position = self.findtext(elem, 'ContactPosition'),
+            person=self.findtext(elem, 'ContactPersonPrimary/ContactPerson'),
+            organization=self.findtext(elem, 'ContactPersonPrimary/ContactOrganization'),
+            position=self.findtext(elem, 'ContactPosition'),
 
-            address = self.findtext(elem, 'ContactAddress/Address'),
-            city = self.findtext(elem, 'ContactAddress/City'),
-            postcode = self.findtext(elem, 'ContactAddress/PostCode'),
-            country = self.findtext(elem, 'ContactAddress/Country'),
-            phone = self.findtext(elem, 'ContactVoiceTelephone'),
-            fax = self.findtext(elem, 'ContactFacsimileTelephone'),
-            email = self.findtext(elem, 'ContactElectronicMailAddress'),
+            address=self.findtext(elem, 'ContactAddress/Address'),
+            city=self.findtext(elem, 'ContactAddress/City'),
+            postcode=self.findtext(elem, 'ContactAddress/PostCode'),
+            country=self.findtext(elem, 'ContactAddress/Country'),
+            phone=self.findtext(elem, 'ContactVoiceTelephone'),
+            fax=self.findtext(elem, 'ContactFacsimileTelephone'),
+            email=self.findtext(elem, 'ContactElectronicMailAddress'),
         )
 
         return md
-
 
     def layers(self):
         if not self._layer_tree:
@@ -81,6 +78,7 @@ class WMSCapabilities(object):
 
     def layers_list(self):
         layers = []
+
         def append_layer(layer):
             if layer.get('name'):
                 layers.append(layer)
@@ -94,7 +92,7 @@ class WMSCapabilities(object):
         requests_elem = self.find(self.tree, 'Capability/Request')
         resources = {}
         resource = self.find(requests_elem, 'GetMap/DCPType/HTTP/Get/OnlineResource')
-        if resource != None:
+        if resource is not None:
             resources['GetMap'] = self.attrib(resource, 'xlink:href')
         return resources
 
@@ -161,6 +159,7 @@ class WMSCapabilities(object):
             max_res = math.sqrt(float(max_res) ** 2 / 2.0)
 
         return min_res, max_res
+
 
 class WMS111Capabilities(WMSCapabilities):
     version = '1.1.1'
@@ -269,6 +268,7 @@ class WMS130Capabilities(WMSCapabilities):
 
         return bbox_srs
 
+
 def yaml_sources(cap):
     sources = {}
     for layer in cap.layers():
@@ -276,7 +276,6 @@ def yaml_sources(cap):
         req = dict(url='http://example', layers=layer['name'])
         if not layer['opaque']:
             req['transparent'] = True
-
 
         sources[layer_name] = dict(
             type='wms',
@@ -288,7 +287,7 @@ def yaml_sources(cap):
 
 
 def parse_capabilities(fileobj):
-    if isinstance(fileobj, string_type):
+    if isinstance(fileobj, str):
         fileobj = open(fileobj, 'rb')
     tree = etree.parse(fileobj)
     root_tag = tree.getroot().tag
@@ -296,8 +295,11 @@ def parse_capabilities(fileobj):
         return WMS111Capabilities(tree)
     elif root_tag == '{http://www.opengis.net/wms}WMS_Capabilities':
         return WMS130Capabilities(tree)
+    elif root_tag.startswith('{http://www.opengis.net/wmts'):
+        raise ValueError('Parsing of WMTS capabilities is not supported')
     else:
-        raise ValueError('unknown start tag in capabilities: ' + root_tag)
+        raise ValueError(f'Unknown start tag in capabilities: {root_tag}')
+
 
 if __name__ == '__main__':
     import sys

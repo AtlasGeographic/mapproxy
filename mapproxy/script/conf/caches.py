@@ -14,17 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from mapproxy.compat import iteritems
 
 def caches(cap, sources, srs_grids):
     caches = {}
-    for name, source in iteritems(sources):
+    for name, source in sources.items():
         conf = for_source(name, source, srs_grids)
         if not conf:
             continue
         caches[name[:-len('_wms')] + '_cache'] = conf
 
     return caches
+
 
 def for_source(name, source, srs_grids):
     cache = {
@@ -42,4 +42,3 @@ def for_source(name, source, srs_grids):
     cache['grids'] = grids
 
     return cache
-

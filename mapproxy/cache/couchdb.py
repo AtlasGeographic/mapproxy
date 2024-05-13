@@ -21,6 +21,7 @@ import socket
 import time
 import hashlib
 import base64
+from io import BytesIO
 
 from mapproxy.image import ImageSource
 from mapproxy.cache.base import (
@@ -28,7 +29,6 @@ from mapproxy.cache.base import (
     tile_buffer, CacheBackendError,)
 from mapproxy.source import SourceError
 from mapproxy.srs import SRS
-from mapproxy.compat import string_type, iteritems, BytesIO
 
 from threading import Lock
 
@@ -41,18 +41,22 @@ except ImportError:
 import logging
 log = logging.getLogger(__name__)
 
+
 class UnexpectedResponse(CacheBackendError):
     pass
 
+
 class CouchDBCache(TileCacheBase):
     def __init__(self, url, db_name,
-        file_ext, tile_grid, md_template=None,
-        tile_id_template=None):
+                 file_ext, tile_grid, md_template=None,
+                 tile_id_template=None, coverage=None):
+        super(CouchDBCache, self).__init__(coverage)
 
         if requests is None:
             raise ImportError("CouchDB backend requires 'requests' package.")
 
-        self.lock_cache_id = 'couchdb-' + hashlib.md5((url + db_name).encode('utf-8')).hexdigest()
+        md5 = hashlib.new('md5', (url + db_name).encode('utf-8'), usedforsecurity=False)
+        self.lock_cache_id = 'couchdb-' + md5.hexdigest()
         self.file_ext = file_ext
         self.tile_grid = tile_grid
         self.md_template = md_template
@@ -115,7 +119,6 @@ class CouchDBCache(TileCacheBase):
             return False
         raise SourceError('%r: %r' % (resp.status_code, resp.content))
 
-
     def _tile_doc(self, tile):
         tile_id = self.document_url(tile.coord, relative=True)
         if self.md_template:
@@ -158,7 +161,8 @@ class CouchDBCache(TileCacheBase):
         doc = {'docs': list(tile_docs.values())}
         data = json.dumps(doc)
         self.init_db()
-        resp = self.req_session.post(self.couch_url + '/_bulk_docs', data=data, headers={'Content-type': 'application/json'})
+        resp = self.req_session.post(self.couch_url + '/_bulk_docs', data=data,
+                                     headers={'Content-type': 'application/json'})
         if resp.status_code != 201:
             raise UnexpectedResponse('got unexpected resp (%d) from CouchDB: %s' % (resp.status_code, resp.content))
 
@@ -180,7 +184,8 @@ class CouchDBCache(TileCacheBase):
         keys_doc = {'keys': list(tile_docs.keys())}
         data = json.dumps(keys_doc)
         self.init_db()
-        resp = self.req_session.post(self.couch_url + '/_all_docs', data=data, headers={'Content-type': 'application/json'})
+        resp = self.req_session.post(self.couch_url + '/_all_docs', data=data,
+                                     headers={'Content-type': 'application/json'})
         if resp.status_code != 200:
             raise UnexpectedResponse('got unexpected resp (%d) from CouchDB: %s' % (resp.status_code, resp.content))
 
@@ -246,10 +251,11 @@ def utc_now_isoformat():
     now = now.rsplit('.', 1)[0] + 'Z'
     return now
 
+
 class CouchDBMDTemplate(object):
     def __init__(self, attributes):
         self.attributes = attributes
-        for key, value in iteritems(attributes):
+        for key, value in attributes.items():
             if value == '{{timestamp}}':
                 self.timestamp_key = key
                 break
@@ -260,8 +266,8 @@ class CouchDBMDTemplate(object):
     def doc(self, tile, grid):
         doc = {}
         x, y, z = tile.coord
-        for key, value in iteritems(self.attributes):
-            if not isinstance(value, string_type) or not value.startswith('{{'):
+        for key, value in self.attributes.items():
+            if not isinstance(value, str) or not value.startswith('{{'):
                 doc[key] = value
                 continue
 

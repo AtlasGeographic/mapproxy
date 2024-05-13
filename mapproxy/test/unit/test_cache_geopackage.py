@@ -26,16 +26,24 @@ from mapproxy.cache.geopackage import GeopackageCache, GeopackageLevelCache
 from mapproxy.cache.tile import Tile
 from mapproxy.grid import tile_grid, TileGrid
 from mapproxy.image import ImageSource
+from mapproxy.layer import MapExtent
+from mapproxy.srs import SRS
 from mapproxy.test.helper import assert_files_in_dir
 from mapproxy.test.unit.test_cache_tile import TileCacheTestBase
+from mapproxy.util.coverage import coverage
+
+
+GLOBAL_WEBMERCATOR_EXTENT = MapExtent(
+    (-20037508.342789244, -20037508.342789244, 20037508.342789244, 20037508.342789244),
+    SRS(3857))
 
 
 class TestGeopackageCache(TileCacheTestBase):
 
     always_loads_metadata = True
 
-    def setup(self):
-        TileCacheTestBase.setup(self)
+    def setup_method(self):
+        TileCacheTestBase.setup_method(self)
         self.gpkg_file = os.path.join(self.cache_dir, 'tmp.gpkg')
         self.table_name = 'test_tiles'
         self.cache = GeopackageCache(
@@ -44,10 +52,10 @@ class TestGeopackageCache(TileCacheTestBase):
             table_name=self.table_name,
         )
 
-    def teardown(self):
+    def teardown_method(self):
         if self.cache:
             self.cache.cleanup()
-        TileCacheTestBase.teardown(self)
+        TileCacheTestBase.teardown_method(self)
 
     def test_new_geopackage(self):
         assert os.path.exists(self.gpkg_file)
@@ -77,9 +85,12 @@ class TestGeopackageCache(TileCacheTestBase):
             content = cur.fetchone()
             assert content[0] == self.table_name
 
+        assert self.cache.coverage is None
+        assert self.cache.bbox == GLOBAL_WEBMERCATOR_EXTENT.bbox
+
     def test_load_empty_tileset(self):
-        assert self.cache.load_tiles([Tile(None)]) == True
-        assert self.cache.load_tiles([Tile(None), Tile(None), Tile(None)]) == True
+        assert self.cache.load_tiles([Tile(None)]) is True
+        assert self.cache.load_tiles([Tile(None), Tile(None), Tile(None)]) is True
 
     def test_load_more_than_2000_tiles(self):
         # prepare data
@@ -103,34 +114,58 @@ class TestGeopackageCache(TileCacheTestBase):
             db.commit()
 
         try:
-            assert self.cache.store_tile(self.create_tile((0, 0, 1))) == True
+            assert self.cache.store_tile(self.create_tile((0, 0, 1))) is True
 
             t = threading.Thread(target=block)
             t.start()
             time.sleep(0.05)
-            assert self.cache.store_tile(self.create_tile((0, 0, 1))) == False
+            assert self.cache.store_tile(self.create_tile((0, 0, 1))) is False
         finally:
             t.join()
 
-        assert self.cache.store_tile(self.create_tile((0, 0, 1))) == True
+        assert self.cache.store_tile(self.create_tile((0, 0, 1))) is True
+
+
+class TestGeopackageCacheCoverage(TileCacheTestBase):
+    def setup_method(self):
+        TileCacheTestBase.setup_method(self)
+        self.gpkg_file = os.path.join(self.cache_dir, 'tmp.gpkg')
+        self.table_name = 'test_tiles'
+        self.cache = GeopackageCache(
+            self.gpkg_file,
+            tile_grid=tile_grid(4326, name='inspire-crs-84-quad'),
+            table_name=self.table_name,
+            coverage=coverage([20, 20, 30, 30], SRS(4326))
+        )
+
+    def teardown_method(self):
+        if self.cache:
+            self.cache.cleanup()
+        TileCacheTestBase.teardown_method(self)
+
+    def test_correct_coverage(self):
+        assert self.cache.bbox == [20, 20, 30, 30]
 
 
 class TestGeopackageLevelCache(TileCacheTestBase):
 
     always_loads_metadata = True
 
-    def setup(self):
-        TileCacheTestBase.setup(self)
+    def setup_method(self):
+        TileCacheTestBase.setup_method(self)
         self.cache = GeopackageLevelCache(
             self.cache_dir,
             tile_grid=tile_grid(3857, name='global-webmarcator'),
             table_name='test_tiles',
         )
 
-    def teardown(self):
+    def teardown_method(self):
         if self.cache:
             self.cache.cleanup()
-        TileCacheTestBase.teardown(self)
+        TileCacheTestBase.teardown_method(self)
+
+    def test_default_coverage(self):
+        assert self.cache.coverage is None
 
     def test_level_files(self):
         if os.path.exists(self.cache_dir):
@@ -166,7 +201,6 @@ class TestGeopackageLevelCache(TileCacheTestBase):
         assert_files_in_dir(self.cache_dir, ['1.gpkg', '2.gpkg'], glob='*.gpkg')
         assert self.cache.is_cached(Tile((0, 0, 2)))
 
-
     def test_bulk_store_tiles_with_different_levels(self):
         self.cache.store_tiles([
             self.create_tile((0, 0, 1)),
@@ -181,13 +215,14 @@ class TestGeopackageLevelCache(TileCacheTestBase):
         assert self.cache.is_cached(Tile((0, 0, 2)))
         assert self.cache.is_cached(Tile((1, 0, 2)))
 
+
 class TestGeopackageCacheInitErrors(object):
     table_name = 'cache'
 
     def test_bad_config_geopackage_srs(self):
         error_msg = None
         gpkg_file = os.path.join(os.path.join(os.path.dirname(__file__),
-                                                              'fixture'),
+                                              'fixture'),
                                  'cache.gpkg')
         table_name = 'cache'
         try:
@@ -199,7 +234,7 @@ class TestGeopackageCacheInitErrors(object):
     def test_bad_config_geopackage_tile(self):
         error_msg = None
         gpkg_file = os.path.join(os.path.join(os.path.dirname(__file__),
-                                                              'fixture'),
+                                              'fixture'),
                                  'cache.gpkg')
         table_name = 'cache'
         try:

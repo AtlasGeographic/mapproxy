@@ -15,6 +15,10 @@ import sys
 import time
 import signal
 import subprocess
+from itertools import chain
+from urllib.parse import urlparse, unquote
+
+from werkzeug.exceptions import InternalServerError
 
 try:
     import thread
@@ -28,36 +32,24 @@ except ImportError:
     from socketserver import ThreadingMixIn
     from http.server import HTTPServer, BaseHTTPRequestHandler
 
-from mapproxy.compat import iteritems, PY2, text_type
-from mapproxy.compat.itertools import chain
 from mapproxy.util.py import reraise
+import mapproxy.version
 
-if PY2:
-    def wsgi_encoding_dance(s, charset='utf-8', errors='replace'):
-        if isinstance(s, bytes):
-            return s
-        return s.encode(charset, errors)
-else:
-    def wsgi_encoding_dance(s, charset='utf-8', errors='replace'):
-        if isinstance(s, text_type):
-            s = s.encode(charset)
-        return s.decode('latin1', errors)
 
-try:
-    from urllib.parse import urlparse as url_parse, unquote as url_unquote
-except ImportError:
-    from urlparse import urlparse as url_parse, unquote as url_unquote
+def wsgi_encoding_dance(s, charset='utf-8', errors='replace'):
+    if isinstance(s, str):
+        s = s.encode(charset)
+    return s.decode('latin1', errors)
 
-# from werkzeug.urls import url_parse, url_unquote
 # from werkzeug.exceptions import InternalServerError, BadRequest
 
-import mapproxy.version
 
 def _log(type, message, *args):
     if args:
         message = message % args
     sys.stderr.write('[%s] %s\n' % (type, message.rstrip()))
     sys.stderr.flush()
+
 
 class WSGIRequestHandler(BaseHTTPRequestHandler, object):
     """A request handler that implements WSGI dispatching."""
@@ -67,13 +59,13 @@ class WSGIRequestHandler(BaseHTTPRequestHandler, object):
         return 'MapProxy/' + mapproxy.version.__version__ + ' (Werkzeug based)'
 
     def make_environ(self):
-        request_url = url_parse(self.path)
+        request_url = urlparse(self.path)
 
         def shutdown_server():
             self.server.shutdown_signal = True
 
         url_scheme = 'http'
-        path_info = url_unquote(request_url.path)
+        path_info = unquote(request_url.path)
 
         environ = {
             'wsgi.version':         (1, 0),
@@ -83,8 +75,7 @@ class WSGIRequestHandler(BaseHTTPRequestHandler, object):
             'wsgi.multithread':     self.server.multithread,
             'wsgi.multiprocess':    self.server.multiprocess,
             'wsgi.run_once':        False,
-            'werkzeug.server.shutdown':
-                                    shutdown_server,
+            'werkzeug.server.shutdown': shutdown_server,
             'SERVER_SOFTWARE':      self.server_version,
             'REQUEST_METHOD':       self.command,
             'SCRIPT_NAME':          '',
@@ -268,14 +259,14 @@ def select_ip_version(host, port):
     # and various operating systems.  Probably this code also is
     # not supposed to work, but I can't come up with any other
     # ways to implement this.
-    ##try:
-    ##    info = socket.getaddrinfo(host, port, socket.AF_UNSPEC,
-    ##                              socket.SOCK_STREAM, 0,
-    ##                              socket.AI_PASSIVE)
-    ##    if info:
-    ##        return info[0][0]
-    ##except socket.gaierror:
-    ##    pass
+    # try:
+    #     info = socket.getaddrinfo(host, port, socket.AF_UNSPEC,
+    #                               socket.SOCK_STREAM, 0,
+    #                               socket.AI_PASSIVE)
+    #     if info:
+    #         return info[0][0]
+    # except socket.gaierror:
+    #     pass
     if ':' in host and hasattr(socket, 'AF_INET6'):
         return socket.AF_INET6
     return socket.AF_INET
@@ -396,14 +387,6 @@ def restart_with_reloader():
         new_environ = os.environ.copy()
         new_environ['WERKZEUG_RUN_MAIN'] = 'true'
 
-        # a weird bug on windows. sometimes unicode strings end up in the
-        # environment and subprocess.call does not like this, encode them
-        # to latin1 and continue.
-        if os.name == 'nt' and PY2:
-            for key, value in iteritems(new_environ):
-                if isinstance(value, text_type):
-                    new_environ[key] = value.encode('iso-8859-1')
-
         exit_code = subprocess.call(args, env=new_environ)
         if exit_code != 3:
             return exit_code
@@ -486,7 +469,7 @@ def run_simple(hostname, port, application, use_reloader=False,
 
     def inner():
         ThreadedWSGIServer(hostname, port, application, request_handler,
-                    passthrough_errors).serve_forever()
+                           passthrough_errors).serve_forever()
 
     if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
         display_hostname = hostname != '*' and hostname or 'localhost'
@@ -494,7 +477,7 @@ def run_simple(hostname, port, application, use_reloader=False,
             display_hostname = '[%s]' % display_hostname
         quit_msg = '(Press CTRL+C to quit)'
         _log('info', ' * Running on http://%s:%d/ %s',
-            display_hostname, port, quit_msg)
+             display_hostname, port, quit_msg)
     if use_reloader:
         # Create and destroy a socket so that any exceptions are raised before
         # we spawn a separate Python interpreter and lose this ability.

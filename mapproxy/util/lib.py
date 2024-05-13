@@ -24,21 +24,19 @@ import os
 from ctypes import CDLL
 from ctypes.util import find_library as _find_library
 
-from mapproxy.compat import string_type
-
 
 default_locations = dict(
     darwin=dict(
-        paths = ['/opt/local/lib'],
-        exts = ['.dylib'],
+        paths=['/opt/local/lib'],
+        exts=['.dylib'],
     ),
     win32=dict(
-        paths = [os.path.dirname(os.__file__) + '/../../../DLLs'],
-        exts = ['.dll']
+        paths=[os.path.dirname(os.__file__) + '/../../../DLLs'],
+        exts=['.dll']
     ),
     other=dict(
-        paths = [], # MAPPROXY_LIB_PATH will add paths here
-        exts = ['.so']
+        paths=[],  # MAPPROXY_LIB_PATH will add paths here
+        exts=['.so']
     ),
 )
 
@@ -50,6 +48,7 @@ if additional_lib_path:
         for path in additional_lib_path:
             locs['paths'].insert(0, path)
 
+
 def load_library(lib_names, locations_conf=default_locations):
     """
     Load the `lib_name` library with ctypes.
@@ -58,12 +57,14 @@ def load_library(lib_names, locations_conf=default_locations):
 
     Retruns the loaded library or None.
     """
-    if isinstance(lib_names, string_type):
+    if isinstance(lib_names, str):
         lib_names = [lib_names]
 
     for lib_name in lib_names:
         lib = load_library_(lib_name, locations_conf)
-        if lib is not None: return lib
+        if lib is not None:
+            return lib
+
 
 def load_library_(lib_name, locations_conf=default_locations):
     lib_path = find_library(lib_name)
@@ -110,6 +111,7 @@ def find_library(lib_name, paths=None, exts=None):
                     return lib_path
 
     return None
+
 
 if __name__ == '__main__':
     print(load_library(sys.argv[1]))

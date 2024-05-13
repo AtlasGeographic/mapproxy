@@ -12,7 +12,7 @@ Configuration
 You can configure a backend for each cache with the ``cache`` option.
 Each backend has a ``type`` and one or more options.
 
-::
+.. code-block:: yaml
 
   caches:
     mycache:
@@ -22,6 +22,22 @@ Each backend has a ``type`` and one or more options.
         type: backendtype
         backendoption1: value
         backendoption2: value
+
+You may add a coverage definition to any cache with the ``coverage`` option under ``cache``.
+
+.. code-block:: yaml
+
+  caches:
+    mycache:
+      sources: [...]
+      grids: [...]
+      cache:
+        type: backendtype
+        backendoption1: value
+        backendoption2: value
+        coverage:
+          bbox: [5, 50, 10, 55]
+          srs: 'EPSG:4326'
 
 
 The following backend types are available.
@@ -68,6 +84,11 @@ This is the default cache type and it uses a single file for each tile. Availabl
 
   .. versionadded:: 1.6.0
 
+``image``:
+  See :ref:`image_options` for options.
+
+  .. versionadded:: 2.0.0
+
 .. _cache_mbtiles:
 
 ``mbtiles``
@@ -88,7 +109,7 @@ Available options:
 
 You can set the ``sources`` to an empty list, if you use an existing MBTiles file and do not have a source.
 
-::
+.. code-block:: yaml
 
   caches:
     mbtiles_cache:
@@ -124,7 +145,10 @@ Available options:
 
   .. versionadded:: 1.6.0
 
-::
+``ttl``:
+  The time-to-live of each tile in the cache in seconds. Use 0 (default) to allow unlimited tile reuse.
+
+.. code-block:: yaml
 
   caches:
     sqlite_cache:
@@ -141,7 +165,7 @@ Available options:
 
   All tiles from a meta tile request are stored in one transaction into the SQLite file to increase performance. You need to activate the :ref:`bulk_meta_tiles <bulk_meta_tiles>` option to get the same benefit when you are using tiled sources.
 
-  ::
+  .. code-block:: yaml
 
     caches:
       sqlite_cache:
@@ -224,7 +248,7 @@ Available options:
 Example
 -------
 
-::
+.. code-block:: yaml
 
   caches:
     mycouchdbcache:
@@ -245,7 +269,11 @@ Example
 
 
 
-MapProxy will place the JSON document for tile z=3, x=1, y=2 at ``http://localhost:9999/mywms_tiles/mygrid-3-1-2``. The document will look like::
+MapProxy will place the JSON document for tile z=3, x=1, y=2 at ``http://localhost:9999/mywms_tiles/mygrid-3-1-2``. The document will look like:
+
+
+.. code-block:: json
+  
 
   {
       "_attachments": {
@@ -312,7 +340,7 @@ Available options:
 Example
 -------
 
-::
+.. code-block:: yaml
 
   myriakcache:
     sources: [mywms]
@@ -364,6 +392,12 @@ Available options:
 ``db``:
     Number of the Redis database. Please refer to the Redis documentation. Defaults to `0`.
 
+``username``:
+  Optional authentication username. No defaults.
+
+``password``:
+  Optional authentication password. No defaults.
+
 ``prefix``:
     The prefix added to each tile-key in the Redis cache. Used to distinguish tiles from different caches and grids.  Defaults to ``cache-name_grid-name``.
 
@@ -375,13 +409,15 @@ Available options:
 Example
 -------
 
-::
+.. code-block:: yaml
 
     redis_cache:
         sources: [mywms]
         grids: [mygrid]
         cache:
           type: redis
+          username: mapproxy
+          password: iamgreatpassword
           default_ttl: 600
 
 
@@ -411,7 +447,7 @@ Available options:
 
 You can set the ``sources`` to an empty list, if you use an existing geopackage file and do not have a source.
 
-::
+.. code-block:: yaml
 
   caches:
     geopackage_cache:
@@ -473,13 +509,16 @@ Available options:
 ``directory_layout``:
   Defines the directory layout for the tiles (``12/12345/67890.png``, ``L12/R00010932/C00003039.png``, etc.).  See :ref:`cache_file` for available options. Defaults to ``tms`` (e.g. ``12/12345/67890.png``). This cache cache also supports ``reverse_tms`` where tiles are stored as ``y/x/z.format``. See *note* below.
 
+``use_http_get``:
+  When set to ``true``, requests to S3 ``GetObject`` will be fetched via urllib2 instead of boto, which decreases response times. Defaults to ``false``.
+
 .. note::
   The hierarchical ``directory_layouts`` can hit limitations of S3 *"if you are routinely processing 100 or more requests per second"*. ``directory_layout: reverse_tms`` can work around this limitation. Please read `S3 Request Rate and Performance Considerations <http://docs.aws.amazon.com/AmazonS3/latest/dev/request-rate-perf-considerations.html>`_ for more information on this issue.
 
 Example
 -------
 
-::
+.. code-block:: yaml
 
   cache:
     my_layer_20110501_epsg_4326_cache_out:
@@ -498,7 +537,7 @@ Example
 Example usage with DigitalOcean Spaces
 --------------------------------------
 
-::
+.. code-block:: yaml
 
   cache:
     my_layer_20110501_epsg_4326_cache_out:
@@ -519,7 +558,7 @@ Example usage with DigitalOcean Spaces
 .. _cache_azureblob:
 
 ``azureblob``
-======
+=============
 
 .. versionadded:: to be released
 
@@ -571,7 +610,7 @@ Available options:
 Example
 -------
 
-::
+.. code-block:: yaml
 
   cache:
     my_layer_20110501_epsg_4326_cache_out:
@@ -618,7 +657,7 @@ You can set the ``sources`` to an empty list, if you use an existing compact cac
 
 The following configuration will load tiles from ``/path/to/cache/L00/R0000C0000.bundle``, etc.
 
-::
+.. code-block:: yaml
 
   caches:
     compact_cache:

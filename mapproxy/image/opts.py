@@ -15,11 +15,11 @@
 # limitations under the License.
 
 import copy
-from mapproxy.compat import string_type
+
 
 class ImageOptions(object):
     def __init__(self, mode=None, transparent=None, opacity=None, resampling=None,
-        format=None, bgcolor=None, colors=None, encoding_options=None):
+                 format=None, bgcolor=None, colors=None, encoding_options=None):
         self.transparent = transparent
         self.opacity = opacity
         self.resampling = resampling
@@ -46,7 +46,7 @@ class ImageOptions(object):
             return NotImplemented
 
         return (
-                self.transparent == other.transparent
+            self.transparent == other.transparent
             and self.opacity == other.opacity
             and self.resampling == other.resampling
             and self.format == other.format
@@ -58,6 +58,7 @@ class ImageOptions(object):
 
     def copy(self):
         return copy.copy(self)
+
 
 class ImageFormat(str):
     def __new__(cls, value, *args, **keywargs):
@@ -82,7 +83,7 @@ class ImageFormat(str):
         return ext.strip()
 
     def __eq__(self, other):
-        if isinstance(other, string_type):
+        if isinstance(other, str):
             other = ImageFormat(other)
         elif not isinstance(other, ImageFormat):
             return NotImplemented
@@ -94,6 +95,7 @@ class ImageFormat(str):
 
     def __ne__(self, other):
         return not (self == other)
+
 
 def create_image(size, image_opts=None):
     """
@@ -115,7 +117,7 @@ def create_image(size, image_opts=None):
 
         bgcolor = image_opts.bgcolor or (255, 255, 255)
 
-        if isinstance(bgcolor, string_type):
+        if isinstance(bgcolor, str):
             bgcolor = ImageColor.getrgb(bgcolor)
 
         if image_opts.transparent and len(bgcolor) == 3:
@@ -141,6 +143,7 @@ class ImageFormats(object):
             opts = ImageOptions(transparent=False, format=format)
         return opts
 
+
 def compatible_image_options(img_opts, base_opts=None):
     """
     Return ImageOptions that is compatible with all given `img_opts`.
@@ -153,10 +156,10 @@ def compatible_image_options(img_opts, base_opts=None):
 
     transparent = None
     for o in img_opts:
-        if o.transparent == False:
+        if o.transparent is False:
             transparent = False
             break
-        if o.transparent == True:
+        if o.transparent is True:
             transparent = True
 
     if any(True for o in img_opts if o.mode):

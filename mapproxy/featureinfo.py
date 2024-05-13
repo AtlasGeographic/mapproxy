@@ -17,15 +17,12 @@ import copy
 import json
 
 from functools import reduce
-from io import StringIO
-
-from mapproxy.compat import string_type, PY2, BytesIO, iteritems
+from io import StringIO, BytesIO
 
 try:
     from lxml import etree, html
 
     has_xslt_support = True
-    etree, html  # prevent pyflakes warning
 except ImportError:
     has_xslt_support = False
     etree = html = None
@@ -61,7 +58,7 @@ class XMLFeatureInfoDoc(FeatureInfoDoc):
     defaultEncoding = "UTF-8"
 
     def __init__(self, content):
-        if isinstance(content, (string_type, bytes)):
+        if isinstance(content, (str, bytes)):
             self._str_content = content
             self._etree = None
         else:
@@ -147,9 +144,13 @@ class JSONFeatureInfoDoc(FeatureInfoDoc):
         contents = []
         for d in docs:
             content = d.content
-            if not isinstance(content, string_type):
+            if not isinstance(content, str):
                 content = content.decode('UTF-8')
-            contents.append(json.loads(content))
+            result = json.loads(content)
+            if result:
+                contents.append(result)
+        if not contents:
+            return cls(json.dumps({}))
         combined = reduce(lambda a, b: merge_dict(a, b), contents)
         return cls(json.dumps(combined))
 
@@ -158,7 +159,7 @@ def merge_dict(base, other):
     """
     Return `base` dict with values from `conf` merged in.
     """
-    for k, v in iteritems(other):
+    for k, v in other.items():
         if k not in base:
             base[k] = v
         else:
@@ -181,6 +182,7 @@ def create_featureinfo_doc(content, info_format):
         return JSONFeatureInfoDoc(content)
 
     return TextFeatureInfoDoc(content)
+
 
 def featureinfo_type(info_format):
     info_format = info_format.split(";", 1)[
@@ -217,13 +219,10 @@ class XSLTransformer(object):
 
 
 def as_io(doc):
-    if PY2:
-        return BytesIO(doc)
+    if isinstance(doc, str):
+        return StringIO(doc)
     else:
-        if isinstance(doc, str):
-            return StringIO(doc)
-        else:
-            return BytesIO(doc)
+        return BytesIO(doc)
 
 
 def combine_docs(docs, transformer=None):
@@ -248,5 +247,5 @@ def combine_docs(docs, transformer=None):
 
         if transformer:
             doc = transformer(doc)
-            infotype = None # defined by transformer
+            infotype = None  # defined by transformer
     return doc.as_string(), infotype

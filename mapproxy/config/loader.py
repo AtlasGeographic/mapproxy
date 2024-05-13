@@ -17,6 +17,13 @@
 Configuration loading and system initializing.
 """
 from __future__ import division
+from mapproxy.util.fs import find_exec
+from mapproxy.util.yaml import load_yaml_file, YAMLError
+from mapproxy.util.ext.odict import odict
+from mapproxy.util.py import memoize
+from mapproxy.config.spec import validate_options, add_source_to_mapproxy_yaml_spec, add_service_to_mapproxy_yaml_spec
+from mapproxy.config.validator import validate
+from mapproxy.config import load_default_config, finish_base_config, defaults
 
 import os
 import sys
@@ -26,20 +33,14 @@ from copy import deepcopy, copy
 from functools import partial
 
 import logging
+from urllib.parse import urlparse
+
 log = logging.getLogger('mapproxy.config')
 
-from mapproxy.config import load_default_config, finish_base_config, defaults
-from mapproxy.config.validator import validate_references
-from mapproxy.config.spec import validate_options, add_source_to_mapproxy_yaml_spec, add_service_to_mapproxy_yaml_spec
-from mapproxy.util.py import memoize
-from mapproxy.util.ext.odict import odict
-from mapproxy.util.yaml import load_yaml_file, YAMLError
-from mapproxy.util.fs import find_exec
-from mapproxy.compat.modules import urlparse
-from mapproxy.compat import string_type, iteritems
 
 class ConfigurationError(Exception):
     pass
+
 
 class ProxyConfiguration(object):
     def __init__(self, conf, conf_base_dir=None, seed=False, renderd=False):
@@ -67,32 +68,34 @@ class ProxyConfiguration(object):
         self.grids = {}
         grid_configs = dict(defaults.grids)
         grid_configs.update(self.configuration.get('grids') or {})
-        for grid_name, grid_conf in iteritems(grid_configs):
+        for grid_name, grid_conf in grid_configs.items():
             grid_conf.setdefault('name', grid_name)
             self.grids[grid_name] = GridConfiguration(grid_conf, context=self)
 
     def load_caches(self):
         self.caches = odict()
         caches_conf = self.configuration.get('caches')
-        if not caches_conf: return
+        if not caches_conf:
+            return
         if isinstance(caches_conf, list):
             caches_conf = list_of_dicts_to_ordered_dict(caches_conf)
-        for cache_name, cache_conf in iteritems(caches_conf):
+        for cache_name, cache_conf in caches_conf.items():
             cache_conf['name'] = cache_name
             self.caches[cache_name] = CacheConfiguration(conf=cache_conf, context=self)
 
     def load_sources(self):
         self.sources = SourcesCollection()
-        for source_name, source_conf in iteritems((self.configuration.get('sources') or {})):
+        for source_name, source_conf in (self.configuration.get('sources') or {}).items():
             source_conf['name'] = source_name
             self.sources[source_name] = SourceConfiguration.load(conf=source_conf, context=self)
 
     def load_tile_layers(self):
         self.layers = odict()
         layers_conf = deepcopy(self._layers_conf_dict())
-        if layers_conf is None: return
+        if layers_conf is None:
+            return
         layers = self._flatten_layers_conf_dict(layers_conf)
-        for layer_name, layer_conf in iteritems(layers):
+        for layer_name, layer_conf in layers.items():
             layer_conf['name'] = layer_name
             self.layers[layer_name] = LayerConfiguration(conf=layer_conf, context=self)
 
@@ -125,17 +128,17 @@ class ProxyConfiguration(object):
 
         """
         warnings.warn('old layer configuration syntax is deprecated since 1.4.0. '
-            'use list of dictionaries as documented', RuntimeWarning)
+                      'use list of dictionaries as documented', RuntimeWarning)
         layers = []
         layers_conf = self.configuration.get('layers')
-        if not layers_conf: return None # TODO config error
+        if not layers_conf:
+            return None  # TODO config error
         if isinstance(layers_conf, list):
             layers_conf = list_of_dicts_to_ordered_dict(layers_conf)
-        for layer_name, layer_conf in iteritems(layers_conf):
+        for layer_name, layer_conf in layers_conf.items():
             layer_conf['name'] = layer_name
             layers.append(layer_conf)
         return dict(title=None, layers=layers)
-
 
     def _layers_conf_dict(self):
         """
@@ -157,7 +160,8 @@ class ProxyConfiguration(object):
         first level starts with multiple layers.
         """
         layers_conf = self.configuration.get('layers')
-        if layers_conf is None: return
+        if layers_conf is None:
+            return
 
         if isinstance(layers_conf, list):
             if isinstance(layers_conf[0], dict) and len(layers_conf[0].keys()) == 1:
@@ -166,7 +170,7 @@ class ProxyConfiguration(object):
             elif len(layers_conf) == 1 and (
                 'layers' in layers_conf[0]
                 or 'sources' in layers_conf[0]
-                or 'tile_sources' in layers_conf[0]):
+                    or 'tile_sources' in layers_conf[0]):
                 # single root layer in list -> remove list
                 layers_conf = layers_conf[0]
             else:
@@ -196,12 +200,12 @@ class ProxyConfiguration(object):
 
         return layers
 
-
     def load_wms_root_layer(self):
         self.wms_root_layer = None
 
         layers_conf = self._layers_conf_dict()
-        if layers_conf is None: return
+        if layers_conf is None:
+            return
         self.wms_root_layer = WMSLayerConfiguration(layers_conf, context=self)
 
     def load_services(self):
@@ -232,6 +236,7 @@ class ProxyConfiguration(object):
         """
         return self.configuration.get('__config_files__', {})
 
+
 def list_of_dicts_to_ordered_dict(dictlist):
     """
     >>> d = list_of_dicts_to_ordered_dict([{'a': 1}, {'b': 2}, {'c': 3}])
@@ -241,9 +246,10 @@ def list_of_dicts_to_ordered_dict(dictlist):
 
     result = odict()
     for d in dictlist:
-        for k, v in iteritems(d):
+        for k, v in d.items():
             result[k] = v
     return result
+
 
 class ConfigurationBase(object):
     """
@@ -259,9 +265,10 @@ class ConfigurationBase(object):
         """
         self.conf = conf
         self.context = context
-        for k, v in iteritems(self.defaults):
+        for k, v in self.defaults.items():
             if k not in self.conf:
                 self.conf[k] = v
+
 
 class GridConfiguration(ConfigurationBase):
     @memoize
@@ -270,7 +277,7 @@ class GridConfiguration(ConfigurationBase):
 
         if 'base' in self.conf:
             base_grid_name = self.conf['base']
-            if not base_grid_name in self.context.grids:
+            if base_grid_name not in self.context.grids:
                 raise ConfigurationError('unknown base %s for grid %s' % (base_grid_name, self.conf['name']))
             conf = self.context.grids[base_grid_name].conf.copy()
             conf.update(self.conf)
@@ -284,19 +291,19 @@ class GridConfiguration(ConfigurationBase):
             align_with = self.context.grids[align_with_grid_name].tile_grid()
 
         tile_size = self.context.globals.get_value('tile_size', conf,
-            global_key='grid.tile_size')
+                                                   global_key='grid.tile_size')
         conf['tile_size'] = tuple(tile_size)
         tile_size = tuple(tile_size)
 
         stretch_factor = self.context.globals.get_value('stretch_factor', conf,
-            global_key='image.stretch_factor')
+                                                        global_key='image.stretch_factor')
         max_shrink_factor = self.context.globals.get_value('max_shrink_factor', conf,
-            global_key='image.max_shrink_factor')
+                                                           global_key='image.max_shrink_factor')
 
         if conf.get('origin') is None:
-            log.warning('grid %s does not have an origin. default origin will change from sw (south/west) to nw (north-west) with MapProxy 2.0',
-                conf['name'],
-            )
+            log.warning(
+                'grid %s does not have an origin. default origin will change from sw (south/west) to nw (north-west)'
+                ' with MapProxy 2.0', conf['name'])
 
         grid = tile_grid(
             name=conf['name'],
@@ -348,8 +355,9 @@ class GlobalConfiguration(ConfigurationBase):
         self.renderd_address = self.get_value('renderd.address')
 
     def _copy_conf_values(self, d, target):
-        for k, v in iteritems(d):
-            if v is None: continue
+        for k, v in d.items():
+            if v is None:
+                continue
             if (hasattr(v, 'iteritems') or hasattr(v, 'items')) and k in target:
                 self._copy_conf_values(v, target[k])
             else:
@@ -375,9 +383,9 @@ class GlobalConfiguration(ConfigurationBase):
         return os.path.join(self.base_config.conf_base_dir, path)
 
 
-
 default_image_options = {
 }
+
 
 class ImageOptionsConfiguration(ConfigurationBase):
     def __init__(self, conf, context):
@@ -388,7 +396,7 @@ class ImageOptionsConfiguration(ConfigurationBase):
         self.formats = {}
 
         formats_config = default_image_options.copy()
-        for format, conf in iteritems(self.conf.get('formats', {})):
+        for format, conf in self.conf.get('formats', {}).items():
             if format in formats_config:
                 tmp = formats_config[format].copy()
                 tmp.update(conf)
@@ -399,9 +407,9 @@ class ImageOptionsConfiguration(ConfigurationBase):
                 self._check_encoding_options(conf['encoding_options'])
             if 'merge_method' in conf:
                 warnings.warn('merge_method now defaults to composite. option no longer required',
-                    DeprecationWarning)
+                              DeprecationWarning)
             formats_config[format] = conf
-        for format, conf in iteritems(formats_config):
+        for format, conf in formats_config.items():
             if 'format' not in conf and format.startswith('image/'):
                 conf['format'] = format
             self.formats[format] = conf
@@ -445,14 +453,15 @@ class ImageOptionsConfiguration(ConfigurationBase):
         encoding_options = image_conf.get('encoding_options')
         if 'merge_method' in image_conf:
             warnings.warn('merge_method now defaults to composite. option no longer required',
-                DeprecationWarning)
+                          DeprecationWarning)
 
         self._check_encoding_options(encoding_options)
 
         # only overwrite default if it is not None
-        for k, v in iteritems(dict(transparent=transparent, opacity=opacity, resampling=resampling,
-            format=img_format, colors=colors, mode=mode, encoding_options=encoding_options,
-        )):
+        for k, v in dict(
+                transparent=transparent, opacity=opacity, resampling=resampling,
+                format=img_format, colors=colors, mode=mode, encoding_options=encoding_options,
+        ).items():
             if v is not None:
                 conf[k] = v
 
@@ -487,7 +496,7 @@ def dotted_dict_get(key, d):
             d = d[parts.pop(0)]
     except KeyError:
         return None
-    if parts: # not completely resolved
+    if parts:  # not completely resolved
         return None
     return d
 
@@ -499,6 +508,7 @@ class SourcesCollection(dict):
     ``sc['source_name:lyr,lyr2']`` will return the source with ``source_name``
     and set ``req.layers`` to ``lyr1,lyr2``.
     """
+
     def __getitem__(self, key):
         layers = None
         source_name = key
@@ -510,7 +520,7 @@ class SourcesCollection(dict):
 
         if source.conf.get('type') not in ('wms', 'mapserver', 'mapnik'):
             raise ConfigurationError("found ':' in: '%s'."
-                " tagged sources only supported for WMS/Mapserver/Mapnik" % key)
+                                     " tagged sources only supported for WMS/Mapserver/Mapnik" % key)
 
         uses_req = source.conf.get('type') != 'mapnik'
 
@@ -564,7 +574,8 @@ class SourceConfiguration(ConfigurationBase):
 
     @memoize
     def coverage(self):
-        if not 'coverage' in self.conf: return None
+        if 'coverage' not in self.conf:
+            return None
         from mapproxy.config.coverage import load_coverage
         return load_coverage(self.conf['coverage'])
 
@@ -604,11 +615,12 @@ class SourceConfiguration(ConfigurationBase):
 
     @memoize
     def on_error_handler(self):
-        if not 'on_error' in self.conf: return None
+        if 'on_error' not in self.conf:
+            return None
         from mapproxy.source.error import HTTPSourceErrorHandler
 
         error_handler = HTTPSourceErrorHandler()
-        for status_code, response_conf in iteritems(self.conf['on_error']):
+        for status_code, response_conf in self.conf['on_error'].items():
             if not isinstance(status_code, int) and status_code != 'other':
                 raise ConfigurationError("invalid error code %r in on_error", status_code)
             cacheable = response_conf.get('cache', False)
@@ -622,25 +634,26 @@ class SourceConfiguration(ConfigurationBase):
 
         return error_handler
 
+
 def resolution_range(conf):
     from mapproxy.grid import resolution_range as _resolution_range
     if 'min_res' in conf or 'max_res' in conf:
         return _resolution_range(min_res=conf.get('min_res'),
-                                max_res=conf.get('max_res'))
+                                 max_res=conf.get('max_res'))
     if 'min_scale' in conf or 'max_scale' in conf:
         return _resolution_range(min_scale=conf.get('min_scale'),
-                                max_scale=conf.get('max_scale'))
+                                 max_scale=conf.get('max_scale'))
 
 
 class ArcGISSourceConfiguration(SourceConfiguration):
     source_type = ('arcgis',)
+
     def __init__(self, conf, context):
         SourceConfiguration.__init__(self, conf, context)
 
     def source(self, params=None):
         from mapproxy.client.arcgis import ArcGISClient
         from mapproxy.source.arcgis import ArcGISSource
-        from mapproxy.srs import SRS
         from mapproxy.request.arcgis import create_request
 
         if not self.conf.get('opts', {}).get('map', True):
@@ -678,9 +691,9 @@ class ArcGISSourceConfiguration(SourceConfiguration):
         from mapproxy.client.arcgis import ArcGISInfoClient
         from mapproxy.request.arcgis import create_identify_request
         from mapproxy.source.arcgis import ArcGISInfoSource
-        from mapproxy.srs import SRS
 
-        if params is None: params = {}
+        if params is None:
+            params = {}
         request_format = self.conf['req'].get('format')
         if request_format:
             params['format'] = request_format
@@ -692,14 +705,13 @@ class ArcGISSourceConfiguration(SourceConfiguration):
 
             fi_request = create_identify_request(self.conf['req'], params)
 
-
             http_client, fi_request.url = self.http_client(fi_request.url)
             fi_client = ArcGISInfoClient(fi_request,
-                supported_srs=self.supported_srs(),
-                http_client=http_client,
-                tolerance=tolerance,
-                return_geometries=return_geometries,
-            )
+                                         supported_srs=self.supported_srs(),
+                                         http_client=http_client,
+                                         tolerance=tolerance,
+                                         return_geometries=return_geometries,
+                                         )
             fi_source = ArcGISInfoSource(fi_client)
         return fi_source
 
@@ -748,7 +760,6 @@ class WMSSourceConfiguration(SourceConfiguration):
         from mapproxy.client.wms import WMSClient
         from mapproxy.request.wms import create_request
         from mapproxy.source.wms import WMSSource
-        from mapproxy.srs import SRS, SupportedSRS
 
         if not self.conf.get('wms_opts', {}).get('map', True):
             return None
@@ -757,7 +768,8 @@ class WMSSourceConfiguration(SourceConfiguration):
             from mapproxy.source import DummySource
             return DummySource(coverage=self.coverage())
 
-        if params is None: params = {}
+        if params is None:
+            params = {}
 
         request_format = self.conf['req'].get('format')
         if request_format:
@@ -770,15 +782,15 @@ class WMSSourceConfiguration(SourceConfiguration):
 
         lock = None
         concurrent_requests = self.context.globals.get_value('concurrent_requests', self.conf,
-                                                        global_key='http.concurrent_requests')
+                                                             global_key='http.concurrent_requests')
         if concurrent_requests:
             from mapproxy.util.lock import SemLock
             lock_dir = self.context.globals.get_path('cache.lock_dir', self.conf)
             lock_timeout = self.context.globals.get_value('http.client_timeout', self.conf)
-            url = urlparse.urlparse(self.conf['req']['url'])
-            md5 = hashlib.md5(url.netloc.encode('ascii'))
+            url = urlparse(self.conf['req']['url'])
+            md5 = hashlib.new('md5', url.netloc.encode('ascii'), usedforsecurity=False)
             lock_file = os.path.join(lock_dir, md5.hexdigest() + '.lck')
-            lock = lambda: SemLock(lock_file, concurrent_requests, timeout=lock_timeout)
+            lock = lambda: SemLock(lock_file, concurrent_requests, timeout=lock_timeout)  # noqa
 
         coverage = self.coverage()
         res_range = resolution_range(self.conf)
@@ -794,7 +806,7 @@ class WMSSourceConfiguration(SourceConfiguration):
         fwd_req_params = set(self.conf.get('forward_req_params', []))
 
         request = create_request(self.conf['req'], params, version=version,
-            abspath=self.context.globals.abspath)
+                                 abspath=self.context.globals.abspath)
         http_client, request.url = self.http_client(request.url)
         client = WMSClient(request, http_client=http_client,
                            http_method=http_method, lock=lock,
@@ -811,9 +823,9 @@ class WMSSourceConfiguration(SourceConfiguration):
         from mapproxy.client.wms import WMSInfoClient
         from mapproxy.request.wms import create_request
         from mapproxy.source.wms import WMSInfoSource
-        from mapproxy.srs import SRS
 
-        if params is None: params = {}
+        if params is None:
+            params = {}
         request_format = self.conf['req'].get('format')
         if request_format:
             params['format'] = request_format
@@ -824,11 +836,11 @@ class WMSSourceConfiguration(SourceConfiguration):
             if 'featureinfo_format' in wms_opts:
                 params['info_format'] = wms_opts['featureinfo_format']
             fi_request = create_request(self.conf['req'], params,
-                req_type='featureinfo', version=version,
-                abspath=self.context.globals.abspath)
+                                        req_type='featureinfo', version=version,
+                                        abspath=self.context.globals.abspath)
 
             fi_transformer = self.fi_xslt_transformer(self.conf.get('wms_opts', {}),
-                                                     self.context)
+                                                      self.context)
 
             http_client, fi_request.url = self.http_client(fi_request.url)
             fi_client = WMSInfoClient(fi_request, supported_srs=self.supported_srs(),
@@ -844,7 +856,8 @@ class WMSSourceConfiguration(SourceConfiguration):
         from mapproxy.request.wms import create_request
         from mapproxy.source.wms import WMSLegendSource
 
-        if params is None: params = {}
+        if params is None:
+            params = {}
         request_format = self.conf['req'].get('format')
         if request_format:
             params['format'] = request_format
@@ -864,8 +877,8 @@ class WMSSourceConfiguration(SourceConfiguration):
             for lg_layer in lg_layers:
                 lg_req['layer'] = lg_layer
                 lg_request = create_request(lg_req, params,
-                    req_type='legendgraphic', version=version,
-                    abspath=self.context.globals.abspath)
+                                            req_type='legendgraphic', version=version,
+                                            abspath=self.context.globals.abspath)
                 http_client, lg_request.url = self.http_client(lg_request.url)
                 lg_client = WMSLegendClient(lg_request, http_client=http_client)
                 lg_clients.append(lg_client)
@@ -880,13 +893,13 @@ class MapServerSourceConfiguration(WMSSourceConfiguration):
     def __init__(self, conf, context):
         WMSSourceConfiguration.__init__(self, conf, context)
         self.script = self.context.globals.get_path('mapserver.binary',
-            self.conf)
+                                                    self.conf)
         if not self.script:
             self.script = find_exec('mapserv')
 
         if not self.script or not os.path.isfile(self.script):
             raise ConfigurationError('could not find mapserver binary (%r)' %
-                (self.script, ))
+                                     (self.script, ))
 
         # set url to dummy script name, required as identifier
         # for concurrent_request
@@ -917,29 +930,30 @@ class MapnikSourceConfiguration(SourceConfiguration):
 
         lock = None
         concurrent_requests = self.context.globals.get_value('concurrent_requests', self.conf,
-                                                        global_key='http.concurrent_requests')
+                                                             global_key='http.concurrent_requests')
         if concurrent_requests:
             from mapproxy.util.lock import SemLock
             lock_dir = self.context.globals.get_path('cache.lock_dir', self.conf)
             mapfile = self.conf['mapfile']
-            md5 = hashlib.md5(mapfile.encode('utf-8'))
+            md5 = hashlib.new('md5', mapfile.encode('utf-8'), usedforsecurity=False)
             lock_file = os.path.join(lock_dir, md5.hexdigest() + '.lck')
-            lock = lambda: SemLock(lock_file, concurrent_requests)
+            lock = lambda: SemLock(lock_file, concurrent_requests)  # noqa
 
         coverage = self.coverage()
         res_range = resolution_range(self.conf)
 
         scale_factor = self.conf.get('scale_factor', None)
+        multithreaded = self.conf.get('multithreaded', False)
 
         layers = self.conf.get('layers', None)
-        if isinstance(layers, string_type):
+        if isinstance(layers, str):
             layers = layers.split(',')
 
         mapfile = self.context.globals.abspath(self.conf['mapfile'])
 
         if self.conf.get('use_mapnik2', False):
             warnings.warn('use_mapnik2 option is no longer needed for Mapnik 2 support',
-                DeprecationWarning)
+                          DeprecationWarning)
 
         from mapproxy.source.mapnik import MapnikSource, mapnik as mapnik_api
         if mapnik_api is None:
@@ -953,8 +967,10 @@ class MapnikSourceConfiguration(SourceConfiguration):
             reuse_map_objects = False
 
         return MapnikSource(mapfile, layers=layers, image_opts=image_opts,
-            coverage=coverage, res_range=res_range, lock=lock,
-            reuse_map_objects=reuse_map_objects, scale_factor=scale_factor)
+                            coverage=coverage, res_range=res_range, lock=lock,
+                            reuse_map_objects=reuse_map_objects, scale_factor=scale_factor,
+                            multithreaded=multithreaded)
+
 
 class TileSourceConfiguration(SourceConfiguration):
     supports_meta_tiles = False
@@ -969,19 +985,22 @@ class TileSourceConfiguration(SourceConfiguration):
             from mapproxy.source import DummySource
             return DummySource(coverage=self.coverage())
 
-        if params is None: params = {}
+        if params is None:
+            params = {}
 
         url = self.conf['url']
 
         if self.conf.get('origin'):
             warnings.warn('origin for tile sources is deprecated since 1.3.0 '
-            'and will be ignored. use grid with correct origin.', RuntimeWarning)
+                          'and will be ignored. use grid with correct origin.', RuntimeWarning)
 
         http_client, url = self.http_client(url)
 
         grid_name = self.conf.get('grid')
         if grid_name is None:
-            log.warning("tile source for %s does not have a grid configured and defaults to GLOBAL_MERCATOR. default will change with MapProxy 2.0", url)
+            log.warning(
+                "tile source for %s does not have a grid configured and defaults to GLOBAL_MERCATOR. default will"
+                " change with MapProxy 2.0", url)
             grid_name = "GLOBAL_MERCATOR"
 
         grid = self.context.grids[grid_name].tile_grid()
@@ -994,13 +1013,14 @@ class TileSourceConfiguration(SourceConfiguration):
         format = file_ext(params['format'])
         client = TileClient(TileURLTemplate(url, format=format), http_client=http_client, grid=grid)
         return TiledSource(grid, client, coverage=coverage, image_opts=image_opts,
-            error_handler=error_handler, res_range=res_range)
+                           error_handler=error_handler, res_range=res_range)
 
 
 def file_ext(mimetype):
     from mapproxy.request.base import split_mime_type
     _mime_class, format, _options = split_mime_type(mimetype)
     return format
+
 
 class DebugSourceConfiguration(SourceConfiguration):
     source_type = ('debug',)
@@ -1022,7 +1042,7 @@ source_configuration_types = {
 
 
 def register_source_configuration(config_name, config_class,
-                                  yaml_spec_source_name = None, yaml_spec_source_def = None):
+                                  yaml_spec_source_name=None, yaml_spec_source_def=None):
     """ Method used by plugins to register a new source configuration.
 
         :param config_name: Name of the source configuration
@@ -1051,16 +1071,23 @@ class CacheConfiguration(ConfigurationBase):
     defaults = {'format': 'image/png'}
 
     @memoize
+    def coverage(self):
+        if 'cache' not in self.conf or 'coverage' not in self.conf['cache']:
+            return None
+        from mapproxy.config.coverage import load_coverage
+        return load_coverage(self.conf['cache']['coverage'])
+
+    @memoize
     def cache_dir(self):
         cache_dir = self.conf.get('cache', {}).get('directory')
         if cache_dir:
             if self.conf.get('cache_dir'):
                 log.warning('found cache.directory and cache_dir option for %s, ignoring cache_dir',
-                self.conf['name'])
+                            self.conf['name'])
             return self.context.globals.abspath(cache_dir)
 
         return self.context.globals.get_path('cache_dir', self.conf,
-            global_key='cache.base_dir')
+                                             global_key='cache.base_dir')
 
     @memoize
     def has_multiple_grids(self):
@@ -1072,11 +1099,13 @@ class CacheConfiguration(ConfigurationBase):
             lock_dir = os.path.join(self.cache_dir(), 'tile_locks')
         return lock_dir
 
-    def _file_cache(self, grid_conf, file_ext):
+    def _file_cache(self, grid_conf, image_opts):
         from mapproxy.cache.file import FileCache
 
         cache_dir = self.cache_dir()
         directory_layout = self.conf.get('cache', {}).get('directory_layout', 'tc')
+        coverage = self.coverage()
+
         if self.conf.get('cache', {}).get('directory'):
             if self.has_multiple_grids():
                 raise ConfigurationError(
@@ -1090,21 +1119,22 @@ class CacheConfiguration(ConfigurationBase):
             suffix = grid_conf.conf['srs'].replace(':', '')
             cache_dir = os.path.join(cache_dir, self.conf['name'] + '_' + suffix)
         link_single_color_images = self.context.globals.get_value('link_single_color_images', self.conf,
-            global_key='cache.link_single_color_images')
+                                                                  global_key='cache.link_single_color_images')
 
         if link_single_color_images and sys.platform == 'win32':
             log.warning('link_single_color_images not supported on windows')
             link_single_color_images = False
 
-
         return FileCache(
             cache_dir,
-            file_ext=file_ext,
+            file_ext=image_opts.format.ext,
+            image_opts=image_opts,
             directory_layout=directory_layout,
             link_single_color_images=link_single_color_images,
+            coverage=coverage
         )
 
-    def _mbtiles_cache(self, grid_conf, file_ext):
+    def _mbtiles_cache(self, grid_conf, image_opts):
         from mapproxy.cache.mbtiles import MBTilesCache
 
         filename = self.conf['cache'].get('filename')
@@ -1118,20 +1148,23 @@ class CacheConfiguration(ConfigurationBase):
 
         sqlite_timeout = self.context.globals.get_value('cache.sqlite_timeout', self.conf)
         wal = self.context.globals.get_value('cache.sqlite_wal', self.conf)
+        coverage = self.coverage()
 
         return MBTilesCache(
             mbfile_path,
             timeout=sqlite_timeout,
             wal=wal,
+            coverage=coverage
         )
 
-    def _geopackage_cache(self, grid_conf, file_ext):
+    def _geopackage_cache(self, grid_conf, image_opts):
         from mapproxy.cache.geopackage import GeopackageCache, GeopackageLevelCache
 
         filename = self.conf['cache'].get('filename')
         table_name = self.conf['cache'].get('table_name') or \
-                     "{}_{}".format(self.conf['name'], grid_conf.tile_grid().name)
+            "{}_{}".format(self.conf['name'], grid_conf.tile_grid().name)
         levels = self.conf['cache'].get('levels')
+        coverage = self.coverage()
 
         if not filename:
             filename = self.conf['name'] + '.gpkg'
@@ -1156,18 +1189,19 @@ class CacheConfiguration(ConfigurationBase):
 
         if levels:
             return GeopackageLevelCache(
-                cache_dir, grid_conf.tile_grid(), table_name
+                cache_dir, grid_conf.tile_grid(), table_name, coverage=coverage
             )
         else:
             return GeopackageCache(
-                gpkg_file_path, grid_conf.tile_grid(), table_name
+                gpkg_file_path, grid_conf.tile_grid(), table_name, coverage=coverage
             )
 
-    def _azureblob_cache(self, grid_conf, file_ext):
+    def _azureblob_cache(self, grid_conf, image_opts):
         from mapproxy.cache.azureblob import AzureBlobCache
 
         container_name = self.context.globals.get_value('cache.container_name', self.conf,
                                                         global_key='cache.azureblob.container_name')
+        coverage = self.coverage()
 
         if not container_name:
             raise ConfigurationError("no container_name configured for Azure Blob cache %s" % self.conf['name'])
@@ -1186,32 +1220,38 @@ class CacheConfiguration(ConfigurationBase):
 
         return AzureBlobCache(
             base_path=base_path,
-            file_ext=file_ext,
+            file_ext=image_opts.format.ext,
             directory_layout=directory_layout,
             container_name=container_name,
-            connection_string=connection_string
+            connection_string=connection_string,
+            coverage=coverage
         )
 
-    def _s3_cache(self, grid_conf, file_ext):
+    def _s3_cache(self, grid_conf, image_opts):
         from mapproxy.cache.s3 import S3Cache
 
         bucket_name = self.context.globals.get_value('cache.bucket_name', self.conf,
-            global_key='cache.s3.bucket_name')
+                                                     global_key='cache.s3.bucket_name')
+        coverage = self.coverage()
 
         if not bucket_name:
             raise ConfigurationError("no bucket_name configured for s3 cache %s" % self.conf['name'])
 
         profile_name = self.context.globals.get_value('cache.profile_name', self.conf,
-            global_key='cache.s3.profile_name')
+                                                      global_key='cache.s3.profile_name')
 
         region_name = self.context.globals.get_value('cache.region_name', self.conf,
-            global_key='cache.s3.region_name')
+                                                     global_key='cache.s3.region_name')
 
         endpoint_url = self.context.globals.get_value('cache.endpoint_url', self.conf,
-            global_key='cache.s3.endpoint_url')
+                                                      global_key='cache.s3.endpoint_url')
 
         access_control_list = self.context.globals.get_value('cache.access_control_list', self.conf,
-            global_key='cache.s3.access_control_list')
+                                                             global_key='cache.s3.access_control_list')
+
+        use_http_get = self.context.globals.get_value('cache.use_http_get', self.conf,
+                                                      global_key='cache.s3.use_http_get'
+                                                      )
 
         directory_layout = self.conf['cache'].get('directory_layout', 'tms')
 
@@ -1221,16 +1261,18 @@ class CacheConfiguration(ConfigurationBase):
 
         return S3Cache(
             base_path=base_path,
-            file_ext=file_ext,
+            file_ext=image_opts.format.ext,
             directory_layout=directory_layout,
             bucket_name=bucket_name,
             profile_name=profile_name,
             region_name=region_name,
             endpoint_url=endpoint_url,
-            access_control_list=access_control_list
+            access_control_list=access_control_list,
+            coverage=coverage,
+            use_http_get=use_http_get
         )
 
-    def _sqlite_cache(self, grid_conf, file_ext):
+    def _sqlite_cache(self, grid_conf, image_opts):
         from mapproxy.cache.mbtiles import MBTilesLevelCache
 
         cache_dir = self.conf.get('cache', {}).get('directory')
@@ -1249,14 +1291,17 @@ class CacheConfiguration(ConfigurationBase):
 
         sqlite_timeout = self.context.globals.get_value('cache.sqlite_timeout', self.conf)
         wal = self.context.globals.get_value('cache.sqlite_wal', self.conf)
+        coverage = self.coverage()
 
         return MBTilesLevelCache(
             cache_dir,
             timeout=sqlite_timeout,
             wal=wal,
+            ttl=self.conf.get('cache', {}).get('ttl', 0),
+            coverage=coverage
         )
 
-    def _couchdb_cache(self, grid_conf, file_ext):
+    def _couchdb_cache(self, grid_conf, image_opts):
         from mapproxy.cache.couchdb import CouchDBCache, CouchDBMDTemplate
 
         db_name = self.conf['cache'].get('db_name')
@@ -1270,17 +1315,19 @@ class CacheConfiguration(ConfigurationBase):
 
         md_template = CouchDBMDTemplate(self.conf['cache'].get('tile_metadata', {}))
         tile_id = self.conf['cache'].get('tile_id')
+        coverage = self.coverage()
 
         return CouchDBCache(url=url, db_name=db_name,
-            file_ext=file_ext, tile_grid=grid_conf.tile_grid(),
-            md_template=md_template, tile_id_template=tile_id)
+                            file_ext=image_opts.format.ext, tile_grid=grid_conf.tile_grid(),
+                            md_template=md_template, tile_id_template=tile_id, coverage=coverage)
 
-    def _riak_cache(self, grid_conf, file_ext):
+    def _riak_cache(self, grid_conf, image_opts):
         from mapproxy.cache.riak import RiakCache
 
         default_ports = self.conf['cache'].get('default_ports', {})
         default_pb_port = default_ports.get('pb', 8087)
         default_http_port = default_ports.get('http', 8098)
+        coverage = self.coverage()
 
         nodes = self.conf['cache'].get('nodes')
         if not nodes:
@@ -1302,19 +1349,25 @@ class CacheConfiguration(ConfigurationBase):
         timeout = self.context.globals.get_value('http.client_timeout', self.conf)
 
         return RiakCache(nodes=nodes, protocol=protocol, bucket=bucket,
-            tile_grid=grid_conf.tile_grid(),
-            use_secondary_index=use_secondary_index,
-            timeout=timeout
-        )
+                         tile_grid=grid_conf.tile_grid(),
+                         use_secondary_index=use_secondary_index,
+                         timeout=timeout,
+                         coverage=coverage
+                         )
 
-    def _redis_cache(self, grid_conf, file_ext):
+    def _redis_cache(self, grid_conf, image_opts):
         from mapproxy.cache.redis import RedisCache
 
         host = self.conf['cache'].get('host', '127.0.0.1')
         port = self.conf['cache'].get('port', 6379)
         db = self.conf['cache'].get('db', 0)
         ttl = self.conf['cache'].get('default_ttl', 3600)
-
+        username = self.conf['cache'].get('username', None)
+        password = self.conf['cache'].get('password', None)
+        coverage = self.coverage()
+        ssl_certfile = self.conf['cache'].get('ssl_certfile', None)
+        ssl_keyfile = self.conf['cache'].get('ssl_keyfile', None)
+        ssl_ca_certs = self.conf['cache'].get('ssl_ca_certs', None)
         prefix = self.conf['cache'].get('prefix')
         if not prefix:
             prefix = self.conf['name'] + '_' + grid_conf.tile_grid().name
@@ -1323,13 +1376,20 @@ class CacheConfiguration(ConfigurationBase):
             host=host,
             port=port,
             db=db,
+            username=username,
+            password=password,
             prefix=prefix,
             ttl=ttl,
+            coverage=coverage,
+            ssl_certfile=ssl_certfile,
+            ssl_keyfile=ssl_keyfile,
+            ssl_ca_certs=ssl_ca_certs
         )
 
-    def _compact_cache(self, grid_conf, file_ext):
+    def _compact_cache(self, grid_conf, image_opts):
         from mapproxy.cache.compact import CompactCacheV1, CompactCacheV2
 
+        coverage = self.coverage()
         cache_dir = self.cache_dir()
         if self.conf.get('cache', {}).get('directory'):
             if self.has_multiple_grids():
@@ -1343,9 +1403,9 @@ class CacheConfiguration(ConfigurationBase):
 
         version = self.conf['cache']['version']
         if version == 1:
-            return CompactCacheV1(cache_dir=cache_dir)
+            return CompactCacheV1(cache_dir=cache_dir, coverage=coverage)
         elif version == 2:
-            return CompactCacheV2(cache_dir=cache_dir)
+            return CompactCacheV2(cache_dir=cache_dir, coverage=coverage)
 
         raise ConfigurationError("compact cache only supports version 1 or 2")
     
@@ -1369,14 +1429,14 @@ class CacheConfiguration(ConfigurationBase):
         return CompactCacheGCS(cache_dir=cache_dir, bucket_name=bucket_name, credential_file=credential_file)
 
 
-    def _tile_cache(self, grid_conf, file_ext):
+    def _tile_cache(self, grid_conf, image_opts):
         if self.conf.get('disable_storage', False):
             from mapproxy.cache.dummy import DummyCache
             return DummyCache()
 
-        grid_conf.tile_grid() #create to resolve `base` in grid_conf.conf
+        grid_conf.tile_grid()  # create to resolve `base` in grid_conf.conf
         cache_type = self.conf.get('cache', {}).get('type', 'file')
-        return getattr(self, '_%s_cache' % cache_type)(grid_conf, file_ext)
+        return getattr(self, '_%s_cache' % cache_type)(grid_conf, image_opts)
 
     def _tile_filter(self):
         filters = []
@@ -1413,7 +1473,7 @@ class CacheConfiguration(ConfigurationBase):
         image_opts = self.image_opts()
 
         if (tile_grid.is_subset_of(cache_grid)
-            and params.get('format') == image_opts.format):
+                and params.get('format') == image_opts.format):
             return True
 
         return False
@@ -1436,7 +1496,7 @@ class CacheConfiguration(ConfigurationBase):
         cache_extent = extent.intersection(cache_extent)
 
         source = CacheSource(tile_manager, extent=cache_extent,
-            image_opts=image_opts, tiled_only=tiled_only)
+                             image_opts=image_opts, tiled_only=tiled_only)
         return source
 
     def _sources_for_grid(self, source_names, grid_conf, request_format):
@@ -1484,7 +1544,7 @@ class CacheConfiguration(ConfigurationBase):
 
         source_names = []
 
-        for band, band_sources in iteritems(sources_conf):
+        for band, band_sources in sources_conf.items():
             for source in band_sources:
                 name = source['source']
                 if name in source_names:
@@ -1510,11 +1570,11 @@ class CacheConfiguration(ConfigurationBase):
 
         band_merger = BandMerger(mode=mode)
         available_bands = {'r': 0, 'g': 1, 'b': 2, 'a': 3, 'l': 0}
-        for band, band_sources in iteritems(sources_conf):
+        for band, band_sources in sources_conf.items():
             band_idx = available_bands.get(band)
             if band_idx is None:
                 raise ConfigurationError("unsupported band '%s' for cache %s"
-                    % (band, self.conf['name']))
+                                         % (band, self.conf['name']))
             for source in band_sources:
                 band_merger.add_ops(
                     dst_band=band_idx,
@@ -1534,8 +1594,10 @@ class CacheConfiguration(ConfigurationBase):
         from mapproxy.layer import map_extent_from_grid, merge_layer_extents
 
         base_image_opts = self.image_opts()
-        if self.conf.get('format') == 'mixed' and not self.conf.get('request_format') in [ 'image/png', 'image/vnd.jpeg-png' ]:
-            raise ConfigurationError('request_format must be set to image/png or image/vnd.jpeg-png if mixed mode is enabled')
+        if (self.conf.get('format') == 'mixed' and
+                self.conf.get('request_format') not in ['image/png', 'image/vnd.jpeg-png']):
+            raise ConfigurationError(
+                'request_format must be set to image/png or image/vnd.jpeg-png if mixed mode is enabled')
         request_format = self.conf.get('request_format') or self.conf.get('format')
         if '/' in request_format:
             request_format_ext = request_format.split('/', 1)[1]
@@ -1545,15 +1607,15 @@ class CacheConfiguration(ConfigurationBase):
         caches = []
 
         meta_buffer = self.context.globals.get_value('meta_buffer', self.conf,
-            global_key='cache.meta_buffer')
+                                                     global_key='cache.meta_buffer')
         meta_size = self.context.globals.get_value('meta_size', self.conf,
-            global_key='cache.meta_size')
+                                                   global_key='cache.meta_size')
         bulk_meta_tiles = self.context.globals.get_value('bulk_meta_tiles', self.conf,
-            global_key='cache.bulk_meta_tiles')
+                                                         global_key='cache.bulk_meta_tiles')
         minimize_meta_requests = self.context.globals.get_value('minimize_meta_requests', self.conf,
-            global_key='cache.minimize_meta_requests')
+                                                                global_key='cache.minimize_meta_requests')
         concurrent_tile_creators = self.context.globals.get_value('concurrent_tile_creators', self.conf,
-            global_key='cache.concurrent_tile_creators')
+                                                                  global_key='cache.concurrent_tile_creators')
 
         cache_rescaled_tiles = self.conf.get('cache_rescaled_tiles')
         upscale_tiles = self.conf.get('upscale_tiles', 0)
@@ -1595,7 +1657,7 @@ class CacheConfiguration(ConfigurationBase):
             tile_grid = grid_conf.tile_grid()
             tile_filter = self._tile_filter()
             image_opts = compatible_image_options(source_image_opts, base_opts=base_image_opts)
-            cache = self._tile_cache(grid_conf, image_opts.format.ext)
+            cache = self._tile_cache(grid_conf, image_opts)
             identifier = self.conf['name'] + '_' + tile_grid.name
 
             tile_creator_class = None
@@ -1627,7 +1689,7 @@ class CacheConfiguration(ConfigurationBase):
                 locker = TileLocker(lock_dir, lock_timeout, identifier + '_renderd')
                 # TODO band_merger
                 tile_creator_class = partial(RenderdTileCreator, renderd_address,
-                    priority=priority, tile_locker=locker)
+                                             priority=priority, tile_locker=locker)
 
             else:
                 from mapproxy.cache.tile import TileCreator
@@ -1637,28 +1699,31 @@ class CacheConfiguration(ConfigurationBase):
                 locker = DummyLocker()
             else:
                 locker = TileLocker(
-                        lock_dir=self.lock_dir(),
-                        lock_timeout=self.context.globals.get_value('http.client_timeout', {}),
-                        lock_cache_id=cache.lock_cache_id,
+                    lock_dir=self.lock_dir(),
+                    lock_timeout=self.context.globals.get_value('http.client_timeout', {}),
+                    lock_cache_id=cache.lock_cache_id,
                 )
 
             mgr = TileManager(tile_grid, cache, sources, image_opts.format.ext,
-                locker=locker,
-                image_opts=image_opts, identifier=identifier,
-                request_format=request_format_ext,
-                meta_size=meta_size, meta_buffer=meta_buffer,
-                minimize_meta_requests=minimize_meta_requests,
-                concurrent_tile_creators=concurrent_tile_creators,
-                pre_store_filter=tile_filter,
-                tile_creator_class=tile_creator_class,
-                bulk_meta_tiles=bulk_meta_tiles,
-                cache_rescaled_tiles=cache_rescaled_tiles,
-                rescale_tiles=rescale_tiles,
-            )
+                              locker=locker,
+                              image_opts=image_opts, identifier=identifier,
+                              request_format=request_format_ext,
+                              meta_size=meta_size, meta_buffer=meta_buffer,
+                              minimize_meta_requests=minimize_meta_requests,
+                              concurrent_tile_creators=concurrent_tile_creators,
+                              pre_store_filter=tile_filter,
+                              tile_creator_class=tile_creator_class,
+                              bulk_meta_tiles=bulk_meta_tiles,
+                              cache_rescaled_tiles=cache_rescaled_tiles,
+                              rescale_tiles=rescale_tiles,
+                              )
             if self.conf['name'] in self.context.caches:
                 mgr._refresh_before = self.context.caches[self.conf['name']].conf.get('refresh_before', {})
             extent = merge_layer_extents(sources)
-            if extent.is_default:
+            # If the cache has a defined coverage prefer it's extent over source extent
+            if cache.coverage:
+                extent = cache.coverage.extent
+            elif extent.is_default:
                 extent = map_extent_from_grid(tile_grid)
             caches.append((tile_grid, extent, mgr))
         return caches
@@ -1667,8 +1732,9 @@ class CacheConfiguration(ConfigurationBase):
     def grid_confs(self):
         grid_names = self.conf.get('grids')
         if grid_names is None:
-            log.warning('cache %s does not have any grids. default will change from [GLOBAL_MERCATOR] to [GLOBAL_WEBMERCATOR] with MapProxy 2.0',
-                self.conf['name'])
+            log.warning(
+                'cache %s does not have any grids. default will change from [GLOBAL_MERCATOR] to [GLOBAL_WEBMERCATOR]'
+                ' with MapProxy 2.0', self.conf['name'])
             grid_names = ['GLOBAL_MERCATOR']
         return [(g, self.context.grids[g]) for g in grid_names]
 
@@ -1678,7 +1744,7 @@ class CacheConfiguration(ConfigurationBase):
 
         image_opts = self.image_opts()
         max_tile_limit = self.context.globals.get_value('max_tile_limit', self.conf,
-            global_key='cache.max_tile_limit')
+                                                        global_key='cache.max_tile_limit')
         caches = []
         main_grid = None
         for grid, extent, tile_manager in self.caches():
@@ -1733,6 +1799,7 @@ class WMSLayerConfiguration(ConfigurationBase):
                                   this=this_layer, layers=layers, md=self.conf.get('md'))
         return layer
 
+
 def cache_source_names(context, cache):
     """
     Return all sources for a cache, even if a caches uses another cache.
@@ -1745,6 +1812,7 @@ def cache_source_names(context, cache):
             source_names.append(src)
 
     return source_names
+
 
 class LayerConfiguration(ConfigurationBase):
     @memoize
@@ -1772,7 +1840,7 @@ class LayerConfiguration(ConfigurationBase):
                 source_conf = self.context.sources[source_name]
                 if not source_conf.supports_meta_tiles:
                     raise ConfigurationError('source "%s" of layer "%s" does not support un-tiled access'
-                        % (source_name, self.conf.get('name')))
+                                             % (source_name, self.conf.get('name')))
                 map_layer = source_conf.source()
                 fi_source_names = [source_name]
                 lg_source_names = [source_name]
@@ -1783,15 +1851,19 @@ class LayerConfiguration(ConfigurationBase):
                 sources.append(map_layer)
 
             for fi_source_name in fi_source_names:
-                if fi_source_name not in self.context.sources: continue
-                if not hasattr(self.context.sources[fi_source_name], 'fi_source'): continue
+                if fi_source_name not in self.context.sources:
+                    continue
+                if not hasattr(self.context.sources[fi_source_name], 'fi_source'):
+                    continue
                 fi_source = self.context.sources[fi_source_name].fi_source()
                 if fi_source:
                     fi_sources.append(fi_source)
             if not lg_sources_configured:
                 for lg_source_name in lg_source_names:
-                    if lg_source_name not in self.context.sources: continue
-                    if not hasattr(self.context.sources[lg_source_name], 'lg_source'): continue
+                    if lg_source_name not in self.context.sources:
+                        continue
+                    if not hasattr(self.context.sources[lg_source_name], 'lg_source'):
+                        continue
                     lg_source = self.context.sources[lg_source_name].lg_source()
                     if lg_source:
                         lg_sources.append(lg_source)
@@ -1801,8 +1873,9 @@ class LayerConfiguration(ConfigurationBase):
         if 'dimensions' in self.conf.keys():
             dimensions = self.dimensions()
 
-        layer = WMSLayer(self.conf.get('name'), self.conf.get('title'),
-                         sources, fi_sources, lg_sources, res_range=res_range, md=self.conf.get('md'),dimensions=dimensions)
+        layer = WMSLayer(
+            self.conf.get('name'), self.conf.get('title'), sources, fi_sources, lg_sources, res_range=res_range,
+            md=self.conf.get('md'), dimensions=dimensions)
         return layer
 
     @memoize
@@ -1810,7 +1883,7 @@ class LayerConfiguration(ConfigurationBase):
         from mapproxy.layer import Dimension
         from mapproxy.util.ext.wmsparse.util import parse_datetime_range
         dimensions = {}
-        for dimension, conf in iteritems(self.conf.get('dimensions', {})):
+        for dimension, conf in self.conf.get('dimensions', {}).items():
             raw_values = conf.get('values')
             if len(raw_values) == 1:
                 # look for time or dim_reference_time
@@ -1821,7 +1894,7 @@ class LayerConfiguration(ConfigurationBase):
                     log.debug('Determining values as plain strings')
                     values = raw_values[0].strip().split('/')
             else:
-                values = [str(val) for val in  conf.get('values', ['default'])]
+                values = [str(val) for val in conf.get('values', ['default'])]
 
             default = conf.get('default', values[-1])
             dimensions[dimension.lower()] = Dimension(dimension, values, default=default)
@@ -1839,14 +1912,14 @@ class LayerConfiguration(ConfigurationBase):
         else:
             for source_name in self.conf.get('sources', []):
                 # we only support caches for tiled access...
-                if not source_name in self.context.caches:
+                if source_name not in self.context.caches:
                     if source_name in self.context.sources:
                         src_conf = self.context.sources[source_name].conf
                         # but we ignore debug layers for convenience
                         if src_conf['type'] == 'debug':
                             continue
                         # and WMS layers with map: False (i.e. FeatureInfo only sources)
-                        if src_conf['type'] == 'wms' and src_conf.get('wms_opts', {}).get('map', True) == False:
+                        if src_conf['type'] == 'wms' and src_conf.get('wms_opts', {}).get('map', True) is False:
                             fi_only_sources.append(source_name)
                             continue
 
@@ -1857,7 +1930,6 @@ class LayerConfiguration(ConfigurationBase):
                 # skip layers with more then one source
                 return []
 
-
         dimensions = self.dimensions()
 
         tile_layers = []
@@ -1866,8 +1938,10 @@ class LayerConfiguration(ConfigurationBase):
             fi_source_names = cache_source_names(self.context, cache_name)
 
             for fi_source_name in fi_source_names + fi_only_sources:
-                if fi_source_name not in self.context.sources: continue
-                if not hasattr(self.context.sources[fi_source_name], 'fi_source'): continue
+                if fi_source_name not in self.context.sources:
+                    continue
+                if not hasattr(self.context.sources[fi_source_name], 'fi_source'):
+                    continue
                 fi_source = self.context.sources[fi_source_name].fi_source()
                 if fi_source:
                     fi_sources.append(fi_source)
@@ -1922,6 +1996,7 @@ def fi_xslt_transformers(conf, context):
             fi_transformers[info_type] = XSLTransformer(fi_xslt)
     return fi_transformers
 
+
 def extents_for_srs(bbox_srs):
     from mapproxy.layer import DefaultMapExtent, MapExtent
     from mapproxy.srs import SRS
@@ -1940,8 +2015,9 @@ def extents_for_srs(bbox_srs):
 
 plugin_services = {}
 
+
 def register_service_configuration(service_name, service_creator,
-                                   yaml_spec_service_name = None, yaml_spec_service_def = None):
+                                   yaml_spec_service_name=None, yaml_spec_service_def=None):
     """ Method used by plugins to register a new service.
 
         :param service_name: Name of the service
@@ -1973,7 +2049,7 @@ class ServiceConfiguration(ConfigurationBase):
     def services(self):
         services = []
         ows_services = []
-        for service_name, service_conf in iteritems(self.conf):
+        for service_name, service_conf in self.conf.items():
             creator = getattr(self, service_name + '_service', None)
             if not creator:
                 # If not a known service, try to use the plugin mechanism
@@ -2002,9 +2078,10 @@ class ServiceConfiguration(ConfigurationBase):
 
     def tile_layers(self, conf, use_grid_names=False):
         layers = odict()
-        for layer_name, layer_conf in iteritems(self.context.layers):
+        for layer_name, layer_conf in self.context.layers.items():
             for tile_layer in layer_conf.tile_layers(grid_name_as_path=use_grid_names):
-                if not tile_layer: continue
+                if not tile_layer:
+                    continue
                 if use_grid_names:
                     layers[tile_layer.md['name_path']] = tile_layer
                 else:
@@ -2017,7 +2094,7 @@ class ServiceConfiguration(ConfigurationBase):
         md = self.context.services.conf.get('wms', {}).get('md', {}).copy()
         md.update(conf.get('md', {}))
         max_tile_age = self.context.globals.get_value('tiles.expires_hours')
-        max_tile_age *= 60 * 60 # seconds
+        max_tile_age *= 60 * 60  # seconds
         use_grid_names = conf.get('use_grid_names', False)
         layers = self.tile_layers(conf, use_grid_names=use_grid_names)
         return KMLServer(layers, md, max_tile_age=max_tile_age, use_dimension_layers=use_grid_names)
@@ -2028,13 +2105,13 @@ class ServiceConfiguration(ConfigurationBase):
         md = self.context.services.conf.get('wms', {}).get('md', {}).copy()
         md.update(conf.get('md', {}))
         max_tile_age = self.context.globals.get_value('tiles.expires_hours')
-        max_tile_age *= 60 * 60 # seconds
+        max_tile_age *= 60 * 60  # seconds
 
         origin = conf.get('origin')
         use_grid_names = conf.get('use_grid_names', False)
         layers = self.tile_layers(conf, use_grid_names=use_grid_names)
         return TileServer(layers, md, max_tile_age=max_tile_age, use_dimension_layers=use_grid_names,
-            origin=origin)
+                          origin=origin)
 
     def wmts_service(self, conf):
         from mapproxy.service.wmts import WMTSServer, WMTSRestServer
@@ -2047,7 +2124,7 @@ class ServiceConfiguration(ConfigurationBase):
         restful = conf.get('restful')
 
         max_tile_age = self.context.globals.get_value('tiles.expires_hours')
-        max_tile_age *= 60 * 60 # seconds
+        max_tile_age *= 60 * 60  # seconds
 
         info_formats = conf.get('featureinfo_formats', [])
         info_formats = odict((f['suffix'], f['mimetype']) for f in info_formats)
@@ -2076,7 +2153,7 @@ class ServiceConfiguration(ConfigurationBase):
                     fi_template=fi_template,
                     max_tile_age=max_tile_age,
                     info_formats=info_formats,
-                    )
+                )
             )
 
         return services
@@ -2091,7 +2168,7 @@ class ServiceConfiguration(ConfigurationBase):
         attribution = conf.get('attribution')
         strict = self.context.globals.get_value('strict', conf, global_key='wms.strict')
         on_source_errors = self.context.globals.get_value('on_source_errors',
-            conf, global_key='wms.on_source_errors')
+                                                          conf, global_key='wms.on_source_errors')
         root_layer = self.context.wms_root_layer.wms_layer()
         if not root_layer:
             raise ConfigurationError("found no WMS layer")
@@ -2102,13 +2179,13 @@ class ServiceConfiguration(ConfigurationBase):
             'concurrent_layer_renderer', conf,
             global_key='wms.concurrent_layer_renderer')
         image_formats_names = self.context.globals.get_value('image_formats', conf,
-                                                       global_key='wms.image_formats')
+                                                             global_key='wms.image_formats')
         image_formats = odict()
         for format in image_formats_names:
             opts = self.context.globals.image_options.image_opts({}, format)
             if opts.format in image_formats:
                 log.warning('duplicate mime-type for WMS image_formats: "%s" already configured, will use last format',
-                    opts.format)
+                            opts.format)
             image_formats[opts.format] = opts
         info_types = conf.get('featureinfo_types')
         srs = self.context.globals.get_value('srs', conf, global_key='wms.srs')
@@ -2120,21 +2197,21 @@ class ServiceConfiguration(ConfigurationBase):
             versions = sorted([Version(v) for v in versions])
 
         max_output_pixels = self.context.globals.get_value('max_output_pixels', conf,
-            global_key='wms.max_output_pixels')
+                                                           global_key='wms.max_output_pixels')
         if isinstance(max_output_pixels, list):
             max_output_pixels = max_output_pixels[0] * max_output_pixels[1]
 
         max_tile_age = self.context.globals.get_value('tiles.expires_hours')
-        max_tile_age *= 60 * 60 # seconds
+        max_tile_age *= 60 * 60  # seconds
 
         server = WMSServer(root_layer, md, attribution=attribution,
-            image_formats=image_formats, info_types=info_types,
-            srs=srs, tile_layers=tile_layers, strict=strict, on_error=on_source_errors,
-            concurrent_layer_renderer=concurrent_layer_renderer,
-            max_output_pixels=max_output_pixels, srs_extents=srs_extents,
-            max_tile_age=max_tile_age, versions=versions,
-            inspire_md=inspire_md,
-            )
+                           image_formats=image_formats, info_types=info_types,
+                           srs=srs, tile_layers=tile_layers, strict=strict, on_error=on_source_errors,
+                           concurrent_layer_renderer=concurrent_layer_renderer,
+                           max_output_pixels=max_output_pixels, srs_extents=srs_extents,
+                           max_tile_age=max_tile_age, versions=versions,
+                           inspire_md=inspire_md,
+                           )
 
         server.fi_transformers = fi_xslt_transformers(conf, self.context)
 
@@ -2146,7 +2223,7 @@ class ServiceConfiguration(ConfigurationBase):
         md = self.context.services.conf.get('wms', {}).get('md', {}).copy()
         md.update(conf.get('md', {}))
         layers = odict()
-        for layer_name, layer_conf in iteritems(self.context.layers):
+        for layer_name, layer_conf in self.context.layers.items():
             lyr = layer_conf.wms_layer()
             if lyr:
                 layers[layer_name] = lyr
@@ -2182,21 +2259,22 @@ class ServiceConfiguration(ConfigurationBase):
                 # demo service only supports 1.1.1, use wms_111 as an indicator
                 services.append('wms_111')
 
-        return DemoServer(layers, md, tile_layers=tile_layers,
-            image_formats=image_formats, srs=srs, services=services, restful_template=restful_template)
+        layers = odict(sorted(layers.items(), key=lambda x: x[1].name))
+        background = self.context.globals.get_value('background', conf)
+
+        return DemoServer(
+            layers, md, tile_layers=tile_layers, image_formats=image_formats, srs=srs, services=services,
+            restful_template=restful_template, background=background)
 
 
 def load_plugins():
     """ Locate plugins that belong to the 'mapproxy' group and load them """
-    if sys.version_info >= (3, 8):
-        from importlib import metadata as importlib_metadata
-    else:
-        try:
-            import importlib_metadata
-        except ImportError:
-            return
+    try:
+        import importlib.metadata
+    except ImportError:
+        return
 
-    for dist in importlib_metadata.distributions():
+    for dist in importlib.metadata.distributions():
         for ep in dist.entry_points:
             if ep.group == 'mapproxy':
                 log.info('Loading plugin from package %s' % dist.metadata['name'])
@@ -2226,12 +2304,13 @@ def load_configuration(mapproxy_conf, seed=False, ignore_warnings=True, renderd=
         log.warning(error)
     if not informal_only or (errors and not ignore_warnings):
         raise ConfigurationError('invalid configuration')
-    errors = validate_references(conf_dict)
+    errors = validate(conf_dict)
     for error in errors:
         log.warning(error)
 
     return ProxyConfiguration(conf_dict, conf_base_dir=conf_base_dir, seed=seed,
-        renderd=renderd)
+                              renderd=renderd)
+
 
 def load_configuration_file(files, working_dir):
     """
@@ -2247,7 +2326,7 @@ def load_configuration_file(files, working_dir):
         if 'base' in current_dict:
             current_working_dir = os.path.dirname(conf_file)
             base_files = current_dict.pop('base')
-            if isinstance(base_files, string_type):
+            if isinstance(base_files, str):
                 base_files = [base_files]
             imported_dict = load_configuration_file(base_files, current_working_dir)
             current_dict = merge_dict(current_dict, imported_dict)
@@ -2255,19 +2334,61 @@ def load_configuration_file(files, working_dir):
 
     return conf_dict
 
+
 def merge_dict(conf, base):
     """
     Return `base` dict with values from `conf` merged in.
     """
-    for k, v in iteritems(conf):
+    for k, v in conf.items():
         if k not in base:
             base[k] = v
         else:
             if isinstance(base[k], dict):
-                merge_dict(v, base[k])
+                if v is not None:
+                    base[k] = merge_dict(v, base[k])
+            elif isinstance(base[k], list):
+                if v is not None:
+                    if k in ['bbox', 'tile_size', 'max_output_pixels', 'sources', 'grids']:
+                        base[k] = v
+                    elif k in ['layers']:
+                        base[k] = merge_layers(v, base[k])
+                    elif len(v) == 0:  # delete
+                        base[k] = None
+                    else:
+                        base[k] = base[k] + v
             else:
                 base[k] = v
     return base
+
+
+def merge_layers(conf, base):
+    """
+    Return `base` dict with values from `conf` merged in.
+    """
+    out = []
+    remaining_conf = []
+    for conf_layer in conf:
+        remaining_conf.append(conf_layer['name'])
+
+    for base_layer in base:
+        found = False
+        for conf_layer in conf:
+            if conf_layer['name'] in remaining_conf and base_layer['name'] == conf_layer['name']:
+                new_layer = merge_dict(conf_layer, base_layer)
+                out.append(new_layer)
+                remaining_conf.remove(conf_layer['name'])
+                found = True
+                break
+
+        if not found:
+            out.append(base_layer)
+
+    for conf_layer in conf:
+        if conf_layer['name'] in remaining_conf:
+            out.append(conf_layer)
+
+    return out
+
 
 def parse_color(color):
     """
@@ -2282,7 +2403,7 @@ def parse_color(color):
     """
     if isinstance(color, (list, tuple)) and 3 <= len(color) <= 4:
         return tuple(color)
-    if not isinstance(color, string_type):
+    if not isinstance(color, str):
         raise ValueError('color needs to be a tuple/list or 0xrrggbb/#rrggbb(aa) string, got %r' % color)
 
     if color.startswith('0x'):

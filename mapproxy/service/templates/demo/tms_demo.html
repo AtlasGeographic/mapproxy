@@ -1,5 +1,5 @@
 {{py:
-from mapproxy.compat.modules import escape
+from html import escape
 import textwrap
 
 wrapper = textwrap.TextWrapper(replace_whitespace=False, width=90,
@@ -22,7 +22,7 @@ jscript_functions=None
 
         const transparent = "{{if format == 'png'}}true{{endif}}";
         const srs = "{{srs}}";
-        const extent = [{{', '.join(str(r) for r in layer.grid.bbox)}}];
+        const extent = [{{', '.join(str(r) for r in layer.bbox)}}];
 
         if (!ol.proj.get(srs)) {
             const allDefs = await import('./static/proj4defs.js');
@@ -42,9 +42,13 @@ jscript_functions=None
             maxResolution: {{resolutions[0]}}
         });
 
+        const background_source = new ol.source.XYZ({
+            url: "{{background_url}}"
+        });
+
         const layers = [
             new ol.layer.Tile({
-                source: new ol.source.OSM()
+                source: background_source
             }),
             new ol.layer.Tile({source})
         ];

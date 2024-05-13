@@ -37,43 +37,128 @@ The order of the sections is not important, so you can organize it your way.
 
 .. note:: The indentation is significant and shall only contain space characters. Tabulators are **not** permitted for indentation.
 
-There is another optional section:
+There are other optional sections:
 
-.. versionadded:: 1.6.0
+- ``parts``
 
-- ``parts``: YAML supports references and with that you can define configuration parts and use them in other configuration sections. For example, you can define all you coverages in one place and reference them from the sources. However, MapProxy will log a warning if you put the referent in a place where it is not a valid option. To prevent these warnings you are advised to put these configuration snippets inside the ``parts`` section.
+  .. versionadded:: 1.6.0
 
-For example::
+  YAML supports references and with that you can define configuration parts and use them in other configuration sections. For example, you can define all you coverages in one place and reference them from the sources. However, MapProxy will log a warning if you put the referent in a place where it is not a valid option. To prevent these warnings you are advised to put these configuration snippets inside the ``parts`` section.
 
-  parts:
-    coverages:
-        mycoverage: &mycoverage
-          bbox: [0, 0, 10, 10]
-          srs: 'EPSG:4326'
+  For example:
 
-  sources:
-    mysource1:
-      coverage: *mycoverage
-      ...
-    mysource2:
-      coverage: *mycoverage
-      ...
+  .. code-block:: yaml
 
+    parts:
+      coverages:
+          mycoverage: &mycoverage
+            bbox: [0, 0, 10, 10]
+            srs: 'EPSG:4326'
 
-``base``
-""""""""
+    sources:
+      mysource1:
+        coverage: *mycoverage
+        ...
+      mysource2:
+        coverage: *mycoverage
+        ...
 
-You can split a configuration into multiple files with the ``base`` option. The ``base`` option loads the other files and merges the loaded configuration dictionaries together – it is not a literal include of the other files.
+- ``base``
 
-For example::
+  You can split a configuration into multiple files with the ``base`` option. 
 
-  base: [mygrids.yaml, mycaches_sources.yaml]
-  service: ...
-  layers: ...
+  The ``base`` option loads the other files and merges the loaded configuration dictionaries together – it is not a literal include of the other files.
 
+  For example, to externalize ``grids`` and ``caches``sections, we will have in ``mappproxy.yaml``:
 
-.. versionchanged:: 1.4.0
-  Support for recursive imports and for multiple files.
+  .. code-block:: YAML
+
+    base: [mygrids.yaml, mycaches_sources.yaml]
+    service: ...
+    layers: ...
+
+  Also in more complex configurations (with many layers, caches, sources, etc.), the ``mappproxy.yaml`` can become too big to be easily modified. One solution could be to split layers, caches, sources, etc. by themes: for example, nature (with layers for lakes, rivers, forests), artificial building (with roads, buildings, power plants layers), topography, etc. We could have in ``mappproxy.yaml``:
+
+  .. code-block:: YAML
+
+    base: [nature.yaml, artificial_building.yaml, topography.yaml]
+    service: ...
+    sources:
+      src_mymap:
+        type: wms
+        req:
+          url: ...
+
+  And we could have in ``nature.yaml``:
+
+  .. code-block:: YAML
+
+    layers: 
+      - name: lake
+        sources: [cache_lake]
+        # ...
+      - name: river
+        sources: [cache_river]
+        # ...
+      - name: forest
+        sources: [cache_forest]
+        # ...
+    caches: 
+      - cache_lake
+        sources: ['src_mymap:lake']
+      - cache_river
+        sources: ['src_mymap:river']
+      - cache_forest
+        sources: ['src_mymap:forest']
+
+  The same for ``artificial_building.yaml``:
+
+  .. code-block:: YAML
+
+    layers: 
+      - name: road
+        sources: [cache_road]
+        # ...
+      - name: power_plant
+        sources: [cache_power_plant]
+        # ...
+    caches: 
+      - cache_road
+        sources: ['src_mymap:road']
+      - cache_power_plant
+        sources: ['src_energy:power_plant']
+    sources:
+      src_energy:
+        type: wms
+        req:
+          url: ...
+
+  Finally, when all the configuration files are merged together, we will obtain:
+
+  .. code-block:: YAML
+
+      service: ...
+      sources:
+        src_mymap:
+        src_energy:
+      layers: 
+        - name: lake
+        - name: river
+        - name: forest
+        - name: road
+        - name: power_plant
+      caches: 
+        - cache_lake
+        - cache_river
+        - cache_forest
+        - cache_road
+        - cache_power_plant
+
+  .. versionchanged:: 1.4.0
+    Support for recursive imports and for multiple files.
+
+  .. versionchanged:: 1.16.0
+    Improved support of splat configuration files
 
 .. #################################################################################
 
@@ -84,15 +169,17 @@ services
 
 Here you can configure which services should be started. The configuration for all services is described in the :doc:`services` documentation.
 
-Here is an example::
+Here is an example:
 
-  services:
-    tms:
-    wms:
-      md:
-        title: MapProxy Example WMS
-        contact:
-        # [...]
+.. code-block:: yaml
+
+    services:
+      tms:
+      wms:
+        md:
+          title: MapProxy Example WMS
+          contact:
+          # [...]
 
 .. #################################################################################
 .. index:: layers
@@ -106,7 +193,7 @@ Here you can define all layers MapProxy should offer. The layer definition is si
 
 Layers should be configured as a list (``-`` in YAML), where each layer configuration is a dictionary (``key: value`` in YAML)
 
-::
+.. code-block:: yaml
 
   layers:
     - name: layer1
@@ -122,7 +209,8 @@ Each layer contains information about the layer and where the data comes from.
 
 The old syntax to configure each layer as a dictionary with the key as the name is deprecated.
 
-::
+
+.. code-block:: yaml
 
   layers:
     mylayer:
@@ -131,7 +219,7 @@ The old syntax to configure each layer as a dictionary with the key as the name 
 
 should become
 
-::
+.. code-block:: yaml
 
   layers:
     - name: mylayer
@@ -160,7 +248,9 @@ Readable name of the layer, e.g WMS layer title.
 
 Each layer can contain another ``layers`` configuration. You can use this to build group layers and to build a nested layer tree.
 
-For example::
+For example:
+
+.. code-block:: yaml
 
   layers:
     - name: root
@@ -178,6 +268,7 @@ For example::
         - name: layer2
           title: Title of Layer 2
           sources: [cache2]
+
 
 ``root`` and ``layer1`` is a group layer in this case. The WMS service will render ``layer1a`` and ``layer1b`` if you request ``layer1``. Note that ``sources`` is optional if you supply ``layers``. You can still configure ``sources`` for group layers. In this case the group ``sources`` will replace the ``sources`` of the child layers.
 
@@ -226,9 +317,11 @@ Add additional metadata for this layer. This metadata appears in the WMS 1.3.0 c
 
 See also :doc:`inspire` for configuring additional INSPIRE metadata.
 
-Here is an example layer with extended layer capabilities::
+Here is an example layer with extended layer capabilities:
 
-  layers:
+.. code-block:: yaml
+
+    layers:
     - name: md_layer
       title: WMS layer with extended capabilities
       sources: [wms_source]
@@ -268,6 +361,7 @@ Here is an example layer with extended layer capabilities::
           - url:    http://example.org/datasets/test.pdf
             format: application/pdf
 
+
 ``dimensions``
 """"""""""""""
 
@@ -278,7 +372,7 @@ Here is an example layer with extended layer capabilities::
 Configure the dimensions that this layer supports. Dimensions should be a dictionary with one entry for each dimension.
 Each dimension is another dictionary with a list of ``values`` and an optional ``default`` value. When the ``default`` value is omitted, the last value will be used.
 
-::
+.. code-block:: yaml
 
   layers:
     - name: dimension_layer
@@ -344,6 +438,9 @@ You need to define the ``source`` and the ``band`` index for each source band. T
 
 The following example creates a colored infra-red (false-color) image by using near infra-red for red, red (band 0) for green, and green (band 1) for blue::
 
+
+.. code-block:: yaml
+
   caches:
     cir_cache:
        sources:
@@ -352,7 +449,10 @@ The following example creates a colored infra-red (false-color) image by using n
            b: [{source: dop_cache, band: 1}]
 
 
-You can define multiple sources for each target band. The values are summed and clipped at 255. An optional ``factor`` allows you to reduce the values. You can use this to mix multiple bands into a single grayscale image::
+You can define multiple sources for each target band. The values are summed and clipped at 255. An optional ``factor`` allows you to reduce the values. You can use this to mix multiple bands into a single grayscale image:
+
+
+.. code-block:: yaml
 
   caches:
    grayscale_cache:
@@ -362,7 +462,6 @@ You can define multiple sources for each target band. The values are summed and 
                {source: dop_cache, band: 1, factor: 0.72},
                {source: dop_cache, band: 2, factor: 0.07},
            ]
-
 
 
 Cache sources
@@ -408,10 +507,18 @@ MapProxy will try to use this format to request new tiles, if it is not set ``fo
 ``link_single_color_images``
 """"""""""""""""""""""""""""
 
-If set to ``true``, MapProxy will not store tiles that only contain a single color as a
+If set to ``true`` or ``symlink``, MapProxy will not store tiles that only contain a single color as a
 separate file. MapProxy stores these tiles only once and uses symbolic links to this file
 for every occurrence. This can reduce the size of your tile cache if you have larger areas
 with no data (e.g. water areas, areas with no roads, etc.).
+
+If set to ``hardlink``, MapProxy will store the duplicate tiles as hard links.
+
+This avoids using up inodes for symlinks, which is especially useful if single color images outnumber others (as might be the case in world maps or low-detail maps for example). Directory entries for the hardlinks will still be created of course.
+
+The usual limitation applies: files can only be linked on the same filesystem, assuming it has support for hardlinks in the first place. Furthermore, all the linked files will have the same metadata, in particular the modification time (``mtime``), which is used in seeding or cleanups with the ``refresh_before`` or ``remove_before`` directives.
+
+In practice this means that all the linked images will have the first such tile's modification date and therefore will appear older to the seeding or cleanup process than when they were actually linked. This means that they are *more likely* to be included in the ``refresh_before`` or ``remove_before`` filters, which may or may not be an issue depending on your seeding or cleanup use-cases.
 
 .. note:: This feature is only available on Unix, since Windows has no support for symbolic links.
 
@@ -519,7 +626,9 @@ Tiles created by the ``upscale_tiles`` or ``downscale_tiles`` option are only st
 Here you can force MapProxy to refresh tiles from the source while serving if they are found to be expired.
 The validity conditions are the same as for seeding:
 
-Explanation::
+Explanation:
+
+.. code-block:: yaml
 
   # absolute as ISO time
   refresh_before:
@@ -536,10 +645,9 @@ Explanation::
   refresh_before:
     mtime: path/to/file
 
-Example
-~~~~~~~~
+Example:
 
-::
+.. code-block:: yaml
 
    caches:
      osm_cache:
@@ -574,24 +682,25 @@ Configure the type of the background tile cache. You configure the type with the
 
 Example ``caches`` configuration
 """"""""""""""""""""""""""""""""
-::
 
- caches:
-  simple:
-    source: [mysource]
-    grids: [mygrid]
-  fullexample:
-    source: [mysource, mysecondsource]
-    grids: [mygrid, mygrid2]
-    meta_size: [8, 8]
-    meta_buffer: 256
-    watermark:
-      text: MapProxy
-    request_format: image/tiff
-    format: image/jpeg
-    cache:
-      type: file
-      directory_layout: tms
+.. code-block:: yaml
+
+  caches:
+    simple:
+      source: [mysource]
+      grids: [mygrid]
+    fullexample:
+      source: [mysource, mysecondsource]
+      grids: [mygrid, mygrid2]
+      meta_size: [8, 8]
+      meta_buffer: 256
+      watermark:
+        text: MapProxy
+      request_format: image/tiff
+      format: image/jpeg
+      cache:
+        type: file
+        directory_layout: tms
 
 
 .. #################################################################################
@@ -763,7 +872,7 @@ If you have ``num_levels`` and ``res_factor``: The resolutions will be multiplie
 Example ``grids`` configuration
 """""""""""""""""""""""""""""""
 
-::
+.. code-block:: yaml
 
   grids:
     localgrid:
@@ -790,7 +899,9 @@ A sources defines where MapProxy can request new data. Each source has a ``type`
 
 See :doc:`sources` for the documentation of all available sources.
 
-An example::
+An example:
+
+.. code-block:: yaml
 
   sources:
     sourcename:
@@ -812,6 +923,18 @@ globals
 
 Here you can define some internals of MapProxy and default values that are used in the other configuration directives.
 
+.. _globals_background:
+
+``background``
+""""""""""""""
+
+Configuration of the background displayed in the map viewer. This background map can be observed in the /demo service 
+of MapProxy, in any of the three types of service (WMS, WMTS and TMS).
+
+.. _background_url:
+
+``url``
+  URL of the tile service (it MUST be a service that offers tiles in XYZ format e.g. "https://tile.openstreetmap.org/{z}/{x}/{y}.png")
 
 ``image``
 """""""""
@@ -910,7 +1033,7 @@ The following options define how tiles are created and stored. Most options can 
 
 
 ``link_single_color_images``
-  Enables the ``link_single_color_images`` option for all caches if set to ``true``. See :ref:`link_single_color_images`.
+  Enables the ``link_single_color_images`` option for all caches if set to ``true``, ``symlink`` or ``hardlink``. See :ref:`link_single_color_images`.
 
 .. _max_tile_limit:
 
@@ -932,15 +1055,16 @@ The following options define how tiles are created and stored. Most options can 
   ``preferred_src_proj`` is a dictionary with the target EPSG code (i.e. the SRS requested by the user) and a list of preferred source EPSG codes.
 
   With the following configuration, WMS requests for EPSG:25831 are served from a cache with EPSG:25832, if there is no cache for EPSG:25831.
-  ::
 
-    srs:
-      preferred_src_proj:
-        'EPSG:25831': ['EPSG:25832', 'EPSG:3857']
-        'EPSG:25832': ['EPSG:25831', 'EPSG:25833', 'EPSG:3857']
-        'EPSG:25833': ['EPSG:25832'', 'EPSG:3857']
-        'EPSG:31466': ['EPSG:25831', 'EPSG:25832', 'EPSG:3857']
-        'EPSG:31467': ['EPSG:25832', 'EPSG:25833', 'EPSG:25831', 'EPSG:3857']
+    .. code-block:: yaml
+      
+      srs:
+        preferred_src_proj:
+          'EPSG:25831': ['EPSG:25832', 'EPSG:3857']
+          'EPSG:25832': ['EPSG:25831', 'EPSG:25833', 'EPSG:3857']
+          'EPSG:25833': ['EPSG:25832'', 'EPSG:3857']
+          'EPSG:31466': ['EPSG:25831', 'EPSG:25832', 'EPSG:3857']
+          'EPSG:31467': ['EPSG:25832', 'EPSG:25833', 'EPSG:25831', 'EPSG:3857']
 
   .. versionadded:: 1.12.0
 
@@ -970,21 +1094,22 @@ The following options define how tiles are created and stored. Most options can 
   (east/north) order for all projected SRS.
 
   You need to add the SRS name to the appropriate parameter, if that is not the case for
-  your SRS.::
+  your SRS.:
 
-   srs:
-     # for North/East ordering
-     axis_order_ne: ['EPSG:9999', 'EPSG:9998']
-     # for East/North ordering
-     axis_order_en: ['EPSG:0000', 'EPSG:0001']
+  .. code-block:: yaml
+    
+    srs:
+      # for North/East ordering
+      axis_order_ne: ['EPSG:9999', 'EPSG:9998']
+      # for East/North ordering
+      axis_order_en: ['EPSG:0000', 'EPSG:0001']
 
 
   If you need to override one of the default values, then you need to define both axis
   order options, even if one is empty.
 
   .. versionchanged:: 1.13.0
-  MapProxy can now determine the correct axis order for all coordinate systems when using pyproj>=2. The axis_order_ne/axis_order_en are ignored in this case.
-
+    MapProxy can now determine the correct axis order for all coordinate systems when using pyproj>=2. The axis_order_ne/axis_order_en are ignored in this case.
 
 .. _http_ssl:
 
@@ -1170,7 +1295,9 @@ Global
 
 You can configure image formats globally with the ``image.formats`` option. Each format has a name and one or more options from the list above. You can choose any name, but you need to specify a ``format`` if the name is not a valid mime-type (e.g. ``myformat`` instead of ``image/png``).
 
-Here is an example that defines a custom format::
+Here is an example that defines a custom format:
+
+.. code-block:: yaml
 
   globals:
     image:
@@ -1180,8 +1307,9 @@ Here is an example that defines a custom format::
           mode: P
           transparent: true
 
+You can also modify existing image formats:
 
-You can also modify existing image formats::
+.. code-block:: yaml
 
   globals:
     image:
@@ -1190,10 +1318,11 @@ You can also modify existing image formats::
           encoding_options:
             quantizer: fastoctree
 
-
 MapProxy will use your image formats when you are using the format name as the ``format`` of any source or cache.
 
-For example::
+For example:
+
+.. code-block:: yaml
 
   caches:
     mycache:
@@ -1201,11 +1330,12 @@ For example::
       sources: [source1, source2]
       grids: [my_grid]
 
-
 Local
 """""
 
-You can change all options individually for each cache or source. You can do this by choosing a base format and changing some options::
+You can change all options individually for each cache or source. You can do this by choosing a base format and changing some options:
+
+.. code-block:: yaml
 
   caches:
     mycache:
@@ -1216,7 +1346,9 @@ You can change all options individually for each cache or source. You can do thi
       sources: [source1, source2]
       grids: [my_grid]
 
-You can also configure the format from scratch::
+You can also configure the format from scratch:
+
+.. code-block:: yaml
 
   caches:
     mycache:
@@ -1225,7 +1357,6 @@ You can also configure the format from scratch::
         resampling_method: nearest
       sources: [source1, source2]
       grids: [my_grid]
-
 
 Notes
 -----
@@ -1243,7 +1374,6 @@ You can convert between scales and resolutions with the :ref:`mapproxy-util scal
 
 
 MapProxy will use the OCG value (0.28mm/px) if it's necessary to use a scale value (e.g. MinScaleDenominator in WMS 1.3.0 capabilities), but you should always use resolutions within MapProxy.
-
 
 WMS ScaleHint
 ^^^^^^^^^^^^^

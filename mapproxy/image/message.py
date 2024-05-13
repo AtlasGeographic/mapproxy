@@ -14,20 +14,21 @@
 # limitations under the License.
 
 from __future__ import division
+
+import logging
 import os
-import pkg_resources
+import importlib_resources
 
 from mapproxy.config import base_config, abspath
 from mapproxy.compat.image import Image, ImageColor, ImageDraw, ImageFont
 from mapproxy.image import ImageSource
 from mapproxy.image.opts import create_image, ImageOptions
-from mapproxy.compat import string_type
 
 _pil_ttf_support = True
 
 
-import logging
 log_system = logging.getLogger('mapproxy.system')
+
 
 def message_image(message, size, image_opts, bgcolor='#ffffff',
                   transparent=False):
@@ -48,6 +49,7 @@ def message_image(message, size, image_opts, bgcolor='#ffffff',
     eimg = ExceptionImage(message, image_opts=image_opts)
     return eimg.draw(size=size)
 
+
 def attribution_image(message, size, image_opts=None, inverse=False):
     """
     Creates an image with text attribution (`message`).
@@ -65,6 +67,7 @@ def attribution_image(message, size, image_opts=None, inverse=False):
     aimg = AttributionImage(message, image_opts=image_opts,
                             inverse=inverse)
     return aimg.draw(size=size)
+
 
 class MessageImage(object):
     """
@@ -96,11 +99,11 @@ class MessageImage(object):
             if self.font_name != 'default' and _pil_ttf_support:
                 try:
                     self._font = ImageFont.truetype(font_file(self.font_name),
-                        self.font_size)
+                                                    self.font_size)
                 except ImportError:
                     _pil_ttf_support = False
                     log_system.warning("Couldn't load TrueType fonts, "
-                        "PIL needs to be build with freetype support.")
+                                       "PIL needs to be build with freetype support.")
                 except IOError:
                     _pil_ttf_support = False
                     log_system.warning("Couldn't load find TrueType font ", self.font_name)
@@ -165,6 +168,7 @@ class ExceptionImage(MessageImage):
     """
     font_name = 'default'
     font_size = 9
+
     def __init__(self, message, image_opts):
         MessageImage.__init__(self, message, image_opts=image_opts.copy())
         if not self.image_opts.bgcolor:
@@ -244,7 +248,7 @@ class AttributionImage(MessageImage):
 class TextDraw(object):
     def __init__(self, text, font, font_color=None, bg_color=None,
                  placement='ul', padding=5, linespacing=3):
-        if isinstance(text, string_type):
+        if isinstance(text, str):
             text = text.split('\n')
         self.text = text
         self.font = font
@@ -259,7 +263,7 @@ class TextDraw(object):
             total_bbox, boxes = self._relative_text_boxes(draw)
         except UnicodeEncodeError:
             # raised if font does not support unicode
-            self.text = [l.encode('ascii', 'replace') for l in self.text]
+            self.text = [x.encode('ascii', 'replace') for x in self.text]
             total_bbox, boxes = self._relative_text_boxes(draw)
         return self._place_boxes(total_bbox, boxes, size)
 
@@ -281,16 +285,21 @@ class TextDraw(object):
         boxes = []
         y_offset = 0
         for i, line in enumerate(self.text):
-            text_size = draw.textsize(line, font=self.font)
-            text_box = (0, y_offset, text_size[0], text_size[1]+y_offset)
+            try:
+                text_box = draw.textbbox((0, y_offset), line, font=self.font)
+                y_offset = text_box[3] + self.linespacing
+            except AttributeError:
+                # Pillow < 8
+                text_size = draw.textsize(line, font=self.font)
+                text_box = (0, y_offset, text_size[0], text_size[1]+y_offset)
+                y_offset += text_size[1] + self.linespacing
             boxes.append(text_box)
             total_bbox = (min(total_bbox[0], text_box[0]),
                           min(total_bbox[1], text_box[1]),
                           max(total_bbox[2], text_box[2]),
                           max(total_bbox[3], text_box[3]),
-                         )
+                          )
 
-            y_offset += text_size[1] + self.linespacing
         return total_bbox, boxes
 
     def _move_bboxes(self, boxes, offsets):
@@ -328,6 +337,7 @@ class TextDraw(object):
         offsets = x_offset, y_offset
         return self._move_bboxes([total_bbox], offsets)[0], self._move_bboxes(boxes, offsets)
 
+
 def font_file(font_name):
     font_dir = base_config().image.font_dir
     font_name = font_name.replace(' ', '')
@@ -335,7 +345,7 @@ def font_file(font_name):
         abspath(font_dir)
         path = os.path.join(font_dir, font_name + '.ttf')
     else:
-        path = pkg_resources.resource_filename(__name__, 'fonts/' + font_name + '.ttf')
+        path = str(importlib_resources.files(__package__).joinpath('fonts').joinpath(font_name + '.ttf'))
     return path
 
 

@@ -82,7 +82,9 @@ The Apache HTTP server can directly integrate Python application with the `mod_w
 
 ``mod_wsgi`` requires a server script that defines the configured WSGI function as ``application``. See :ref:`above <server_script>`.
 
-You need to modify your Apache ``httpd.conf`` as follows::
+You need to modify your Apache ``httpd.conf`` as follows:
+
+.. code-block:: apache
 
   # if not loaded elsewhere
   LoadModule wsgi_module modules/mod_wsgi.so
@@ -99,7 +101,9 @@ You need to modify your Apache ``httpd.conf`` as follows::
 
 .. note:: On Windows only the ``WSGIPythonPath`` option is supported. Linux/Unix supports ``WSGIPythonPath`` and ``WSGIPythonHome``. See also the `mod_wsgi documentation for virtualenv <https://modwsgi.readthedocs.io/en/latest/user-guides/virtual-environments.html#virtual-environments>`_ for detailed information when using multiple virtualenvs.
 
-A more complete configuration might look like::
+A more complete configuration might look like:
+
+.. code-block:: apache
 
   # if not loaded elsewhere
   LoadModule wsgi_module modules/mod_wsgi.so
@@ -126,7 +130,7 @@ A more complete configuration might look like::
 Behind HTTP server or proxy
 ---------------------------
 
-There are Python HTTP servers available that can directly run MapProxy. Most of them are robust and efficient, but there are some odd HTTP clients out there that (mis)interpret the HTTP standard in various ways. It is therefor recommended to put a HTTP server or proxy in front that is mature and widely deployed (like Apache_, Nginx_, etc.).
+There are Python HTTP servers available that can directly run MapProxy. Most of them are robust and efficient, but there are some odd HTTP clients out there that (mis)interpret the HTTP standard in various ways. It is therefor recommended to put a HTTP server or proxy in front that is mature and widely deployed (like Apache_, nginx_, etc.).
 
 Python HTTP Server
 ~~~~~~~~~~~~~~~~~~
@@ -161,15 +165,17 @@ You can either use a dedicated HTTP proxy like Varnish_ or a general HTTP web se
 
 You need to set some HTTP headers so that MapProxy can generate capability documents with the URL of the proxy, instead of the local URL of the MapProxy application.
 
-* ``Host`` – is the hostname that clients use to acces MapProxy (i.e. the proxy)
+* ``Host`` – is the hostname that clients use to access MapProxy (i.e. the proxy)
 * ``X-Script-Name`` – path of MapProxy when the URL is not ``/`` (e.g. ``/mapproxy``)
 * ``X-Forwarded-Host`` – alternative to ``HOST``
 * ``X-Forwarded-Proto`` – should be ``https`` when the client connects with HTTPS
 
-Nginx
+nginx
 """""
 
-Here is an example for the Nginx_ webserver with the included proxy module. It forwards all requests to ``example.org/mapproxy`` to ``localhost:8181/``::
+Here is an example for the nginx_ webserver with the included proxy module. It forwards all requests to ``example.org/mapproxy`` to ``localhost:8181/``:
+
+.. code-block:: nginx
 
   server {
     server_name example.org;
@@ -183,9 +189,9 @@ Here is an example for the Nginx_ webserver with the included proxy module. It f
 Apache
 """"""
 
-Here is an example for the Apache_ webserver with the included ``mod_proxy`` and ``mod_headers`` modules. It forwards all requests to ``example.org/mapproxy`` to ``localhost:8181/``
+Here is an example for the Apache_ webserver with the included ``mod_proxy`` and ``mod_headers`` modules. It forwards all requests to ``example.org/mapproxy`` to ``localhost:8181/``:
 
-::
+.. code-block:: apache
 
   <IfModule mod_proxy.c>
     <IfModule mod_headers.c>
@@ -209,8 +215,8 @@ Because of the way Python handles threads in computing heavy applications (like 
 The examples above are all minimal and you should read the documentation of your components to get the best performance with your setup.
 
 
-Load Balancing and High Availablity
------------------------------------
+Load Balancing and High Availability
+------------------------------------
 
 You can easily run multiple MapProxy instances in parallel and use a load balancer to distribute requests across all instances, but there are a few things to consider when the instances share the same tile cache with NFS or other network filesystems.
 
@@ -253,7 +259,7 @@ Here are the most important loggers:
   Logs errors and warnings for service ``XXX``.
 
 ``mapproxy.source.request``
-  Logs all requests to sources with URL, size in kB and duration in milliseconds. The duration is the time it took to receive the header of the response. The actual request duration might be longer, especially for larger images or when the network bandwith is limited.
+  Logs all requests to sources with URL, size in kB and duration in milliseconds. The duration is the time it took to receive the header of the response. The actual request duration might be longer, especially for larger images or when the network bandwidth is limited.
 
 
 Enabling logging
@@ -297,7 +303,9 @@ MultiMapProxy as the following options:
 Server Script
 ~~~~~~~~~~~~~
 
-There is a ``make_wsgi_app`` function in the ``mapproxy.multiapp`` package that creates configured MultiMapProxy WSGI application. Replace the ``application`` definition in your script as follows::
+There is a ``make_wsgi_app`` function in the ``mapproxy.multiapp`` package that creates configured MultiMapProxy WSGI application. Replace the ``application`` definition in your script as follows:
+
+.. code-block:: python
 
   from mapproxy.multiapp import make_wsgi_app
   application = make_wsgi_app('/path/to.projects', allow_listing=True)

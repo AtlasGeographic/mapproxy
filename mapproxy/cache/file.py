@@ -25,32 +25,37 @@ from mapproxy.cache.base import TileCacheBase, tile_buffer
 import logging
 log = logging.getLogger('mapproxy.cache.file')
 
+
 class FileCache(TileCacheBase):
     """
     This class is responsible to store and load the actual tile data.
     """
+
     def __init__(self, cache_dir, file_ext, directory_layout='tc',
-                 link_single_color_images=False):
+                 link_single_color_images=False, coverage=None, image_opts=None):
         """
         :param cache_dir: the path where the tile will be stored
         :param file_ext: the file extension that will be appended to
             each tile (e.g. 'png')
         """
-        super(FileCache, self).__init__()
-        self.lock_cache_id = hashlib.md5(cache_dir.encode('utf-8')).hexdigest()
+        super(FileCache, self).__init__(coverage)
+        md5 = hashlib.new('md5', cache_dir.encode('utf-8'), usedforsecurity=False)
+        self.lock_cache_id = md5.hexdigest()
         self.cache_dir = cache_dir
         self.file_ext = file_ext
+        self.image_opts = image_opts
         self.link_single_color_images = link_single_color_images
         self._tile_location, self._level_location = path.location_funcs(layout=directory_layout)
         if self._level_location is None:
-            self.level_location = None # disable level based clean-ups
+            self.level_location = None  # disable level based clean-ups
 
     def tile_location(self, tile, create_dir=False, dimensions=None):
-        if dimensions is not None and len(dimensions)>0:
+        if dimensions is not None and len(dimensions) > 0:
             items = list(dimensions.keys())
             items.sort()
             dimensions_str = ['{key}-{value}'.format(key=i, value=dimensions[i].replace('/', '_')) for i in items]
-            cache_dir = os.path.join(self.cache_dir, '_'.join(dimensions_str))
+            # todo: cache_dir is not used. should it get returned or removed?
+            cache_dir = os.path.join(self.cache_dir, '_'.join(dimensions_str))  # noqa
         return self._tile_location(tile, self.cache_dir, self.file_ext, create_dir=create_dir, dimensions=dimensions)
 
     def level_location(self, level, dimensions=None):
@@ -86,7 +91,8 @@ class FileCache(TileCacheBase):
             tile.timestamp = stats.st_mtime
             tile.size = stats.st_size
         except OSError as ex:
-            if ex.errno != errno.ENOENT: raise
+            if ex.errno != errno.ENOENT:
+                raise
             tile.timestamp = 0
             tile.size = 0
 
@@ -116,7 +122,7 @@ class FileCache(TileCacheBase):
         if os.path.exists(location):
             if with_metadata:
                 self.load_tile_metadata(tile, dimensions=dimensions)
-            tile.source = ImageSource(location)
+            tile.source = ImageSource(location, image_opts=self.image_opts)
             return True
         return False
 
@@ -125,7 +131,8 @@ class FileCache(TileCacheBase):
         try:
             os.remove(location)
         except OSError as ex:
-            if ex.errno != errno.ENOENT: raise
+            if ex.errno != errno.ENOENT:
+                raise
 
     def store_tile(self, tile, dimensions=None):
         """
@@ -168,18 +175,25 @@ class FileCache(TileCacheBase):
         if os.path.exists(tile_loc) or os.path.islink(tile_loc):
             os.unlink(tile_loc)
 
-        # Use relative path for the symlink
-        real_tile_loc = os.path.relpath(real_tile_loc, os.path.dirname(tile_loc))
+        if self.link_single_color_images == 'hardlink':
+            try:
+                os.link(real_tile_loc, tile_loc)
+            except OSError as e:
+                # ignore error if link was created by other process
+                if e.errno != errno.EEXIST:
+                    raise e
+        else:
+            # Use relative path for the symlink
+            real_tile_loc = os.path.relpath(real_tile_loc, os.path.dirname(tile_loc))
 
-        try:
-            os.symlink(real_tile_loc, tile_loc)
-        except OSError as e:
-            # ignore error if link was created by other process
-            if e.errno != errno.EEXIST:
-                raise e
+            try:
+                os.symlink(real_tile_loc, tile_loc)
+            except OSError as e:
+                # ignore error if link was created by other process
+                if e.errno != errno.EEXIST:
+                    raise e
 
         return
 
     def __repr__(self):
         return '%s(%r, %r)' % (self.__class__.__name__, self.cache_dir, self.file_ext)
-

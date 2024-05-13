@@ -92,8 +92,6 @@ def xslt_files(base_dir):
     base_dir.join("fi_out_html.xsl").write(xslt_output_html)
 
 
-
-
 TESTSERVER_ADDRESS = "localhost", 42423
 
 
@@ -104,7 +102,7 @@ class TestWMSXSLTFeatureInfo(SysTest):
     def config_file(self):
         return "xslt_featureinfo.yaml"
 
-    def setup(self):
+    def setup_method(self):
         self.common_fi_req = WMS111FeatureInfoRequest(
             url="/service?",
             param=dict(
@@ -282,7 +280,7 @@ class TestWMSXSLTFeatureInfoInput(SysTest):
     def config_file(self):
         return "xslt_featureinfo_input.yaml"
 
-    def setup(self):
+    def setup_method(self):
         self.common_fi_req = WMS111FeatureInfoRequest(
             url="/service?",
             param=dict(
@@ -315,7 +313,6 @@ class TestWMSXSLTFeatureInfoInput(SysTest):
             assert resp.content_type == "application/vnd.ogc.gml"
             assert strip_whitespace(resp.body) == b"<baz><foo>Bar</foo></baz>"
 
-
     def test_get_featureinfo_ignore_content_type(self, app):
         fi_body = b"<a><b>Bar</b></a>"
         expected_req = (
@@ -325,7 +322,8 @@ class TestWMSXSLTFeatureInfoInput(SysTest):
                 "&VERSION=1.3.0&BBOX=1000.0,400.0,2000.0,1400.0&styles="
                 "&WIDTH=200&QUERY_LAYERS=a_one&i=10&J=20&info_format=text/xml"
             },
-            {"body": fi_body, "headers": {"content-type": "text/mycustom_xml"}}, # ignored because layer has featureinfo_format
+            # ignored because layer has featureinfo_format
+            {"body": fi_body, "headers": {"content-type": "text/mycustom_xml"}},
         )
         with mock_httpd(TESTSERVER_ADDRESS, [expected_req]):
             self.common_fi_req.params["info_format"] = "text/xml"

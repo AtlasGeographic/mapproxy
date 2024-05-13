@@ -18,6 +18,7 @@ from __future__ import division
 
 import copy
 import time
+from unittest import SkipTest
 
 import yaml
 import pytest
@@ -31,10 +32,12 @@ from mapproxy.config.loader import (
 )
 from mapproxy.cache.tile import TileManager
 from mapproxy.config.spec import validate_options
+from mapproxy.layer import MapExtent
 from mapproxy.seed.spec import validate_seed_conf
 from mapproxy.srs import SRS
 from mapproxy.test.helper import TempFile
 from mapproxy.test.unit.test_grid import assert_almost_equal_bbox
+from mapproxy.util.coverage import coverage
 from mapproxy.util.geom import EmptyGeometryError
 
 
@@ -62,8 +65,8 @@ class TestLayerConfiguration(object):
             root = conf.wms_root_layer.wms_layer()
 
         # no root layer defined
-        assert root.title == None
-        assert root.name == None
+        assert root.title is None
+        assert root.name is None
         layers = root.child_layers()
 
         # names are in order
@@ -95,8 +98,8 @@ class TestLayerConfiguration(object):
             root = conf.wms_root_layer.wms_layer()
 
         # no root layer defined
-        assert root.title == None
-        assert root.name == None
+        assert root.title is None
+        assert root.name is None
         layers = root.child_layers()
 
         # names might not be in order
@@ -154,7 +157,7 @@ class TestLayerConfiguration(object):
         root = conf.wms_root_layer.wms_layer()
 
         assert root.title == 'Root Layer'
-        assert root.name == None
+        assert root.name is None
 
         layers = root.child_layers()
         # names are in order
@@ -173,8 +176,8 @@ class TestLayerConfiguration(object):
         conf = ProxyConfiguration(conf)
         root = conf.wms_root_layer.wms_layer()
 
-        assert root.title == None
-        assert root.name == None
+        assert root.title is None
+        assert root.name is None
 
         layers = root.child_layers()
         # names are in order
@@ -208,7 +211,7 @@ class TestLayerConfiguration(object):
         root = conf.wms_root_layer.wms_layer()
 
         assert root.title == 'Root Layer'
-        assert root.name == None
+        assert root.name is None
 
         layers = root.child_layers()
         # names are in order
@@ -237,7 +240,7 @@ class TestLayerConfiguration(object):
         root = conf.wms_root_layer.wms_layer()
 
         assert root.title == 'Root Layer'
-        assert root.name == None
+        assert root.name is None
 
         layers = root.child_layers()
         # names are in order
@@ -254,7 +257,7 @@ class TestLayerConfiguration(object):
                   title: Layer One
         ''')
         conf = ProxyConfiguration(conf)
-        assert conf.wms_root_layer.wms_layer() == None
+        assert conf.wms_root_layer.wms_layer() is None
         try:
             conf.services.services()
         except ConfigurationError:
@@ -273,7 +276,6 @@ class TestGridConfiguration(object):
 
         grid = conf.grids['GLOBAL_GEODETIC'].tile_grid()
         assert grid.srs == SRS(4326)
-
 
     def test_simple(self):
         conf = {'grids': {'grid': {'srs': 'EPSG:4326', 'bbox': [5, 50, 10, 55]}}}
@@ -317,6 +319,7 @@ class TestGridConfiguration(object):
         assert_almost_equal_bbox([5, 50, 10, 55], grid.bbox)
         assert grid.resolution(0) == 0.01953125
         assert grid.resolution(1) == 0.01953125/2
+
 
 class TestWMSSourceConfiguration(object):
     def test_simple_grid(self):
@@ -449,7 +452,6 @@ class TestWMSSourceConfiguration(object):
         else:
             assert False, 'expected ConfigurationError'
 
-
     def test_layer_tagged_source(self):
         conf_dict = {
             'layers': [
@@ -510,7 +512,7 @@ class TestWMSSourceConfiguration(object):
             'sources': {
                 'osm': {
                     'type': 'wms',
-                    'http':{'ssl_no_cert_checks': True},
+                    'http': {'ssl_no_cert_checks': True},
                     'req': {
                         'url': 'https://foo:bar@localhost/service?',
                         'layers': 'base',
@@ -558,6 +560,7 @@ class TestBandMergeConfig(object):
 def load_services(conf_file):
     conf = load_configuration(conf_file)
     return conf.configured_services()
+
 
 class TestConfLoading(object):
     yaml_string = b"""
@@ -622,6 +625,7 @@ sources:
 
         class MyExtraServiceServer(Server):
             names = ('my_extra_service',)
+
             def __init__(self):
                 pass
 
@@ -686,20 +690,99 @@ sources:
         finally:
             source_configuration_types = source_configuration_types_before
 
+
 class TestConfImport(object):
 
     yaml_string = """
+services:
+  wms:
+    # ======= overwritten max_output_pixels:
+    max_output_pixels: [4000, 4000]
+
+layers:
+  - name: Zones_A
+    title: Zones_A
+    # ======= overwritten sources and layers:
+    sources: []
+    layers:
+      - name: layerA1
+        title: layer A 1
+        sources: [osm_cache]
+      - name: layerA2
+        title: layer A 2
+        sources: [osm_cache]
+    # ======= overwritten add Zones_B:
+  - name: Zones_B
+    title: Zones_B
+    sources: [cache-Zones_B]
+  - name: osm
+    # ======= overwritten sources:
+    sources: [overwritten_source]
+
+caches:
+  cache-Zones_B:
+    sources: ['src_mymap:Zones_B']
+    grids: [webmercator]
+    cache:
+      type: file
+      directory_layout: mp
+
+sources:
+  overwritten_source:
+    type: wms
+    req:
+      url: http://localhost/qgis/overwritten_source?
+      transparent: true
+      layers: osm
+
 globals:
   http:
     client_timeout: 1
+    # ======= overwritten headers:
     headers:
       baz: quux
+
+grids:
+  webmercator:
+    base: GLOBAL_WEBMERCATOR
+    srs: EPSG:3857
+    # ======= overwritten tile size:
+    tile_size: [1024, 1024]
 """
 
     yaml_parent = """
+layers:
+  - name: Zones_A
+    title: Zones_A
+    sources: [cache-Zones_A]
+  - name: osm
+    # ======= overwritten title:
+    title: overwritten
+
+sources:
+  src_mymap:
+    type: wms
+    req:
+      url: http://localhost/qgis/mymap?
+      transparent: true
+
+caches:
+  cache-Zones_A:
+    sources: ['src_mymap:Zones_A']
+    grids: [webmercator]
+    cache:
+      type: file
+      directory_layout: mp
+
+grids:
+  grid_alaska_4326:
+    # ======= overwritten bbox:
+    bbox: [-180, 60, -100, 70]
+
 globals:
   http:
     client_timeout: 2
+    # ======= overwritten headers:
     headers:
       foo: bar
       bar: qux
@@ -707,6 +790,49 @@ globals:
 """
 
     yaml_grand_parent = """
+services:
+  demo:
+  tms:
+    use_grid_names: true
+    origin: 'nw'
+  kml:
+      use_grid_names: true
+  wmts:
+  wms:
+    image_formats: ['image/jpeg', 'image/png']
+    srs: [ 'EPSG:3857' ]
+    max_output_pixels: [2000, 2000]
+
+layers:
+  - name: osm
+    title: Omniscale OSM WMS - osm.omniscale.net
+    sources: [osm_cache]
+
+caches:
+  osm_cache:
+    grids: [webmercator]
+    sources: [osm_wms]
+
+sources:
+  osm_wms:
+    type: wms
+    req:
+      url: https://maps.omniscale.net/v2/demo/style.default/service?
+      layers: osm
+
+grids:
+  webmercator:
+    base: GLOBAL_WEBMERCATOR
+    srs: EPSG:3857
+    bbox_srs: EPSG:3857
+    tile_size: [512, 512]
+
+  grid_alaska_4326:
+    srs: EPSG:4326
+    origin: sw
+    bbox: [-167, 53, -141, 67]
+    bbox_srs: 'EPSG:4326'
+
 globals:
   http:
     client_timeout: 3
@@ -744,6 +870,32 @@ base: [%s]
                     assert http['headers']['baz'] == 'quux'
                     assert http['method'] == 'GET'
 
+                    grid_webmercator = config.grids['webmercator']
+                    assert grid_webmercator is not None
+                    assert grid_webmercator.tile_grid().tile_size == (1024, 1024)
+                    assert grid_webmercator.conf['srs'] == 'EPSG:3857'
+                    assert grid_webmercator.conf['bbox_srs'] == 'EPSG:3857'
+
+                    grid_alaska = config.grids['grid_alaska_4326']
+                    assert grid_alaska is not None
+                    assert grid_alaska.conf['bbox'] == [-180.0, 60.0, -100.0, 70.0]
+                    assert grid_alaska.conf['srs'] == 'EPSG:4326'
+                    assert grid_alaska.conf['bbox_srs'] == 'EPSG:4326'
+                    assert grid_alaska.conf['origin'] == 'sw'
+
+                    wms = config.services.conf['wms']
+                    assert wms is not None
+                    assert wms['max_output_pixels'] == [4000, 4000]
+                    assert wms['image_formats'] == ['image/jpeg', 'image/png']
+
+                    layers = config.layers
+                    assert layers['osm'].conf['title'] == 'overwritten'
+                    assert layers['osm'].conf['sources'] == ['overwritten_source']
+                    assert layers['Zones_A'].conf['sources'] == []
+                    assert layers['layerA1'].conf['sources'] == ['osm_cache']
+                    assert layers['layerA2'].conf['sources'] == ['osm_cache']
+                    assert layers['Zones_B'].conf['sources'] == ['cache-Zones_B']
+
                     config_files = config.config_files()
                     assert set(config_files.keys()) == set([gp, p, cfg])
                     assert abs(config_files[gp] - time.time()) < 10
@@ -768,13 +920,13 @@ class TestConfMerger(object):
         a = {'a': 12}
         b = {'b': 42}
         m = merge_dict(a, b)
-        assert {'a': 12 , 'b': 42} == m
+        assert {'a': 12, 'b': 42} == m
 
     def test_recursive(self):
-        a = {'a': {'aa': 12, 'a':{'aaa': 100}}}
-        b = {'a': {'aa': 11, 'ab': 13, 'a':{'aaa': 101, 'aab': 101}}}
+        a = {'a': {'aa': 12, 'a': {'aaa': 100}}}
+        b = {'a': {'aa': 11, 'ab': 13, 'a': {'aaa': 101, 'aab': 101}}}
         m = merge_dict(a, b)
-        assert {'a': {'aa': 12, 'ab': 13, 'a':{'aaa': 100, 'aab': 101}}} == m
+        assert {'a': {'aa': 12, 'ab': 13, 'a': {'aaa': 100, 'aab': 101}}} == m
 
 
 class TestLoadConfiguration(object):
@@ -784,10 +936,67 @@ class TestLoadConfiguration(object):
 services:
   unknown:
                 """)
-            load_configuration(f) # defaults to ignore_warnings=True
+            load_configuration(f)  # defaults to ignore_warnings=True
 
             with pytest.raises(ConfigurationError):
                 load_configuration(f, ignore_warnings=False)
+
+    def test_load_default_cache_coverage(object):
+        with TempFile() as f:
+            open(f, 'wb').write(b"""
+                services:
+                  my_extra_service:
+                      foo: bar
+
+                layers:
+                  - name: temp
+                    title: temp
+                    sources: [temp]
+
+                caches:
+                  temp:
+                    grids: [grid]
+                    sources: []
+                    cache:
+                      type: geopackage
+
+                grids:
+                  grid:
+                    srs: 'EPSG:4326'
+                    bbox: [-180, -90, 180, 90]
+                """)
+            config = load_configuration(f)  # defaults to ignore_warnings=True
+            cache = config.caches['temp']
+            assert cache.coverage() is None
+            assert cache.caches()[0][1] == MapExtent((-180, -90, 180, 90), SRS(4326))
+
+    def test_load_cache_coverage(object):
+        with TempFile() as f:
+            open(f, 'wb').write(b"""
+                services:
+                  my_extra_service:
+                      foo: bar
+
+                layers:
+                  - name: temp
+                    title: temp
+                    sources: [temp]
+
+                parts:
+                  coverages:
+                    test_coverage: &test_coverage
+                        bbox: [-50, -50, 50, 50]
+                        srs: EPSG:4326
+
+                caches:
+                  temp:
+                    sources: []
+                    cache:
+                      type: geopackage
+                      coverage: *test_coverage
+                """)
+            config = load_configuration(f)  # defaults to ignore_warnings=True
+            assert config.caches['temp'].coverage() == coverage([-50, -50, 50, 50], SRS(4326))
 
 
 class TestImageOptions(object):
@@ -797,19 +1006,19 @@ class TestImageOptions(object):
         conf = ProxyConfiguration(conf_dict)
         image_opts = conf.globals.image_options.image_opts({}, 'image/png')
         assert image_opts.format == 'image/png'
-        assert image_opts.mode == None
+        assert image_opts.mode is None
         assert image_opts.colors == 256
-        assert image_opts.transparent == None
+        assert image_opts.transparent is None
         assert image_opts.resampling == 'bicubic'
 
     def test_default_format_paletted_false(self):
-        conf_dict = {'globals': {'image': { 'paletted': False }}}
+        conf_dict = {'globals': {'image': {'paletted': False}}}
         conf = ProxyConfiguration(conf_dict)
         image_opts = conf.globals.image_options.image_opts({}, 'image/png')
         assert image_opts.format == 'image/png'
-        assert image_opts.mode == None
-        assert image_opts.colors == None
-        assert image_opts.transparent == None
+        assert image_opts.mode is None
+        assert image_opts.colors is None
+        assert image_opts.transparent is None
         assert image_opts.resampling == 'bicubic'
 
     def test_update_default_format(self):
@@ -820,24 +1029,24 @@ class TestImageOptions(object):
         conf = ProxyConfiguration(conf_dict)
         image_opts = conf.globals.image_options.image_opts({}, 'image/png')
         assert image_opts.format == 'image/png'
-        assert image_opts.mode == None
+        assert image_opts.mode is None
         assert image_opts.colors == 16
-        assert image_opts.transparent == None
+        assert image_opts.transparent is None
         assert image_opts.resampling == 'nearest'
         assert image_opts.encoding_options['quantizer'] == 'mediancut'
 
     def test_custom_format(self):
         conf_dict = {'globals': {'image': {'resampling_method': 'bilinear',
-            'formats': {
-                'image/foo': {'mode': 'RGBA', 'colors': 42}
-            }
-        }}}
+                                           'formats': {
+                                               'image/foo': {'mode': 'RGBA', 'colors': 42}
+                                           }
+                                           }}}
         conf = ProxyConfiguration(conf_dict)
         image_opts = conf.globals.image_options.image_opts({}, 'image/foo')
         assert image_opts.format == 'image/foo'
         assert image_opts.mode == 'RGBA'
         assert image_opts.colors == 42
-        assert image_opts.transparent == None
+        assert image_opts.transparent is None
         assert image_opts.resampling == 'bilinear'
 
     def test_format_grid(self):
@@ -858,9 +1067,9 @@ class TestImageOptions(object):
         conf = ProxyConfiguration(conf_dict)
         image_opts = conf.caches['test'].image_opts()
         assert image_opts.format == 'image/png'
-        assert image_opts.mode == None
+        assert image_opts.mode is None
         assert image_opts.colors == 256
-        assert image_opts.transparent == None
+        assert image_opts.transparent is None
         assert image_opts.resampling == 'bilinear'
 
     def test_custom_format_grid(self):
@@ -898,14 +1107,14 @@ class TestImageOptions(object):
         assert image_opts.format == 'image/png'
         assert image_opts.mode == 'P'
         assert image_opts.colors == 16
-        assert image_opts.transparent == None
+        assert image_opts.transparent is None
         assert image_opts.resampling == 'bilinear'
 
         image_opts = conf.caches['test2'].image_opts()
         assert image_opts.format == 'image/png'
         assert image_opts.mode == 'RGBA'
         assert image_opts.colors == 8
-        assert image_opts.transparent == True
+        assert image_opts.transparent is True
         assert image_opts.resampling == 'bilinear'
 
     def test_custom_format_source(self):
@@ -945,16 +1154,15 @@ class TestImageOptions(object):
         assert image_opts.format == 'image/png'
         assert image_opts.mode == 'P'
         assert image_opts.colors == 16
-        assert image_opts.transparent == None
+        assert image_opts.transparent is None
         assert image_opts.resampling == 'bilinear'
 
         image_opts = tile_mgr.sources[0].image_opts
         assert image_opts.format == 'image/png'
         assert image_opts.mode == 'P'
         assert image_opts.colors == 256
-        assert image_opts.transparent == None
+        assert image_opts.transparent is None
         assert image_opts.resampling == 'bilinear'
-
 
         conf_dict['caches']['test']['request_format'] = 'image/tiff'
         conf = ProxyConfiguration(conf_dict)
@@ -963,14 +1171,14 @@ class TestImageOptions(object):
         assert image_opts.format == 'image/png'
         assert image_opts.mode == 'P'
         assert image_opts.colors == 16
-        assert image_opts.transparent == None
+        assert image_opts.transparent is None
         assert image_opts.resampling == 'bilinear'
 
         image_opts = tile_mgr.sources[0].image_opts
         assert image_opts.format == 'image/tiff'
-        assert image_opts.mode == None
-        assert image_opts.colors == None
-        assert image_opts.transparent == None
+        assert image_opts.mode is None
+        assert image_opts.colors is None
+        assert image_opts.transparent is None
         assert image_opts.resampling == 'bilinear'
 
     def test_encoding_options_errors(self):
@@ -995,7 +1203,6 @@ class TestImageOptions(object):
         else:
             raise Exception('expected ConfigurationError')
 
-
         conf_dict['globals']['image']['formats']['image/jpeg']['encoding_options'] = {
             'quantizer': 'foo'
         }
@@ -1006,7 +1213,6 @@ class TestImageOptions(object):
         else:
             raise Exception('expected ConfigurationError')
 
-
         conf_dict['globals']['image']['formats']['image/jpeg']['encoding_options'] = {}
         conf = ProxyConfiguration(conf_dict)
         try:
@@ -1016,13 +1222,13 @@ class TestImageOptions(object):
         else:
             raise Exception('expected ConfigurationError')
 
-
         conf_dict['globals']['image']['formats']['image/jpeg']['encoding_options'] = {
             'quantizer': 'fastoctree'
         }
         conf = ProxyConfiguration(conf_dict)
 
         conf.globals.image_options.image_opts({}, 'image/jpeg')
+
 
 class TestCoverageValidation(object):
     def test_union(self):

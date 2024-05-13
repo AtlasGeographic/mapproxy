@@ -30,9 +30,9 @@ WMS servers can adjust the position of labels so that more labels can fit on a m
 
 Repeated labels
 ~~~~~~~~~~~~~~~
-WMS servers render labels for polygon areas in each request. Labels for large areas will apear multiple times, once in each tile.
+WMS servers render labels for polygon areas in each request. Labels for large areas will appear multiple times, once in each tile.
 
-.. image:: imgs/labeling-repeated.png 
+.. image:: imgs/labeling-repeated.png
 
 
 MapProxy Options
@@ -59,12 +59,12 @@ But, it only reduces the problem and does not solve it. Nonetheless, it should b
 
 You can configure the meta tile size in the ``globals.cache`` section and for each ``cache``. It defaults to ``[4, 4]``.
 
-::
+.. code-block:: yaml
 
   globals:
     cache:
       meta_size: [6, 6]
-  
+
   caches:
     mycache:
       sources: [...]
@@ -92,12 +92,13 @@ A meta buffer of 100 will add 100 pixels at each edge of the request. With a met
 To solve the first issue, the value should be at least half of your longest labels: If you have text labels that are up to 200 pixels wide, than you should use a meta buffer of around 120 pixels.
 
 You can configure the size of the meta buffer in the ``globals.cache`` section and for each ``cache``. It defaults to ``80``.
-::
+
+.. code-block:: yaml
 
   globals:
     cache:
       meta_buffer: 100
-  
+
   caches:
     mycache:
       sources: [...]
@@ -109,7 +110,7 @@ You can configure the size of the meta buffer in the ``globals.cache`` section a
 WMS Server Options
 ------------------
 
-You can reduce some of the labeling issues with meta tiling, and solve the first issue with the meta buffer. The issues with dynamic and repeated labeling requires some changes to your WMS server. 
+You can reduce some of the labeling issues with meta tiling, and solve the first issue with the meta buffer. The issues with dynamic and repeated labeling requires some changes to your WMS server.
 
 In general, you need to disable the dynamic position of labels and you need to allow the rendering of partial labels.
 
@@ -122,10 +123,10 @@ MapServer has lots of settings that affect the rendering. The two most important
 ``PROCESSING "LABEL_NO_CLIP=ON"`` from the ``LAYER`` configuration.
   With this option the labels are fixed to the whole feature and not only the part of the feature that is visible in the current map request. Default is off.
 
-and 
+and
 
 ``PARTIALS`` from the ``LABEL`` configuration.
-  If this option is true, then labels are rendered beyond the boundaries of the map request. Default is true. 
+  If this option is true, then labels are rendered beyond the boundaries of the map request. Default is true.
 
 
 ``PARTIAL FALSE``
@@ -154,24 +155,26 @@ As described above, you can use a meta buffer to prevent missing labels. You nee
   END
 
 
-``mapproxy.yaml``::
+``mapproxy.yaml``:
+
+.. code-block:: yaml
 
   caches:
     mycache:
       meta_buffer: 150
       [...]
 
-.. 
+..
 .. ``PARTIALS TRUE``:
 ..   .. image:: imgs/mapserver_points_partials_true.png
-.. 
+..
 .. ``PARTIALS FALSE``:
 ..   .. image:: imgs/mapserver_points_partials_false.png
 
 Polygons
 ~~~~~~~~
 
-Meta tiling reduces the number of repeated labels, but they can still apear at the border of meta tiles.
+Meta tiling reduces the number of repeated labels, but they can still appear at the border of meta tiles.
 
 You can use the ``PROCESSING "LABEL_NO_CLIP=ON"`` option to fix this problem.
 With this option, MapServer places the label always at a fixed position, even if that position is outside the current map request.
@@ -181,7 +184,7 @@ With this option, MapServer places the label always at a fixed position, even if
 If the ``LABEL_NO_CLIP`` option is used, ``PARTIALS`` should be ``TRUE``. Otherwise label would not be rendered if they overlap the map boundary. This options also requires a meta buffer.
 
 ``example.map``::
-  
+
   LAYER
     TYPE POLYGON
     PROCESSING "LABEL_NO_CLIP=ON"
@@ -193,7 +196,9 @@ If the ``LABEL_NO_CLIP`` option is used, ``PARTIALS`` should be ``TRUE``. Otherw
     END
   END
 
-``mapproxy.yaml``::
+``mapproxy.yaml``:
+
+.. code-block:: yaml
 
   caches:
     mycache:
@@ -202,7 +207,7 @@ If the ``LABEL_NO_CLIP`` option is used, ``PARTIALS`` should be ``TRUE``. Otherw
 
 .. ``PROCESSING  "LABEL_NO_CLIP=ON"`` and ``PARTIALS TRUE``:
 ..   .. image:: imgs/mapserver_area_with_labelclipping.png
-.. 
+..
 .. ``PARTIALS FALSE``:
 ..   .. image:: imgs/mapserver_area_without_labelclipping.png
 
@@ -225,7 +230,9 @@ Most of the time, the labels will match at the boundaries of the meta tiles, whe
     END
   END
 
-``mapproxy.yaml``::
+``mapproxy.yaml``:
+
+.. code-block:: yaml
 
   caches:
     mycache:
@@ -236,7 +243,7 @@ You can disable repeated labels with ``PROCESSING LABEL_NO_CLIP="ON"``, if don't
 
 
 ``example.map``::
-  
+
   LAYER
     TYPE LINE
     PROCESSING "LABEL_NO_CLIP=ON"
@@ -247,7 +254,9 @@ You can disable repeated labels with ``PROCESSING LABEL_NO_CLIP="ON"``, if don't
     END
   END
 
-``mapproxy.yaml``::
+``mapproxy.yaml``:
+
+.. code-block:: yaml
 
   caches:
     mycache:
@@ -276,7 +285,9 @@ You need to compensate the meta buffer when you use ``PARTIALS FALSE`` in combin
     END
   END
 
-``mapproxy.yaml``::
+``mapproxy.yaml``:
+
+.. code-block:: yaml
 
   caches:
     mycache:
@@ -284,10 +295,10 @@ You need to compensate the meta buffer when you use ``PARTIALS FALSE`` in combin
       [...]
 
 .. It has to be evaluated which solution is the best for each application: some cropped or missing labels.
-.. 
+..
 .. ``PROCESSING  "LABEL_NO_CLIP=ON"`` and ``PARTIALS TRUE``:
 ..   .. image:: imgs/mapserver_road_with_labelclipping.png
-.. 
+..
 .. ``PROCESSING  "LABEL_NO_CLIP=OFF"`` and ``PARTIALS FALSE``:
 ..   .. image:: imgs/mapserver_road_without_labelclipping.png
 

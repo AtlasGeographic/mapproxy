@@ -19,7 +19,7 @@ Service responses.
 
 import hashlib
 from mapproxy.util.times import format_httpdate, parse_httpdate, timestamp
-from mapproxy.compat import PY2, text_type, iteritems
+
 
 class Response(object):
     charset = 'utf-8'
@@ -59,9 +59,11 @@ class Response(object):
     status = property(_status_get, _status_set)
 
     def _last_modified_set(self, date):
-        if not date: return
+        if not date:
+            return
         self._timestamp = timestamp(date)
         self.headers['Last-modified'] = format_httpdate(self._timestamp)
+
     def _last_modified_get(self):
         return self.headers.get('Last-modified', None)
 
@@ -87,7 +89,7 @@ class Response(object):
         """
         if etag_data:
             hash_src = ''.join((str(x) for x in etag_data)).encode('ascii')
-            self.etag = hashlib.md5(hash_src).hexdigest()
+            self.etag = hashlib.new('md5', hash_src, usedforsecurity=False).hexdigest()
 
         if no_cache:
             assert not timestamp and not max_age
@@ -111,7 +113,6 @@ class Response(object):
         environ = req.environ
 
         not_modified = False
-
 
         if self.etag == environ.get('HTTP_IF_NONE_MATCH', -1):
             not_modified = True
@@ -145,12 +146,10 @@ class Response(object):
     @property
     def fixed_headers(self):
         headers = []
-        for key, value in iteritems(self.headers):
-            if type(value) != text_type:
+        for key, value in self.headers.items():
+            if type(value) is not str:
                 # for str subclasses like ImageFormat
                 value = str(value)
-            if PY2 and isinstance(value, unicode):
-                value = value.encode('utf-8')
             headers.append((key, value))
         return headers
 
@@ -159,8 +158,8 @@ class Response(object):
             if ((not hasattr(self.response, 'ok_to_seek') or
                 self.response.ok_to_seek) and
                (hasattr(self.response, 'seek') and
-                hasattr(self.response, 'tell'))):
-                self.response.seek(0, 2) # to EOF
+                    hasattr(self.response, 'tell'))):
+                self.response.seek(0, 2)  # to EOF
                 self.headers['Content-length'] = str(self.response.tell())
                 self.response.seek(0)
             if 'wsgi.file_wrapper' in environ:
@@ -169,7 +168,7 @@ class Response(object):
                 resp_iter = iter(lambda: self.response.read(self.block_size), b'')
         elif not self.response:
             resp_iter = iter([])
-        elif isinstance(self.response, text_type):
+        elif isinstance(self.response, str):
             self.response = self.response.encode(self.charset)
             self.headers['Content-length'] = str(len(self.response))
             resp_iter = iter([self.response])
@@ -184,7 +183,7 @@ class Response(object):
 
     def iter_encode(self, chunks):
         for chunk in chunks:
-            if isinstance(chunk, text_type):
+            if isinstance(chunk, str):
                 chunk = chunk.encode(self.charset)
             yield chunk
 
@@ -232,6 +231,7 @@ _status_codes = {
     504: 'Gateway Time-out',
     505: 'HTTP Version not supported',
 }
+
 
 def status_code(code):
     return str(code) + ' ' + _status_codes[code]

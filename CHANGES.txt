@@ -1,5 +1,74 @@
 Nightly
 ~~~~~~~~~~~~~~~~~
+
+2.0.2 2024-01-10
+~~~~~~~~~~~~~~~~
+
+Fixes:
+
+- Revert PR "Fix mixed image format for file, S3 and azureblob caches"
+
+2.0.1 2024-01-05
+~~~~~~~~~~~~~~~~~
+Improvements:
+
+- Alpine based docker images have been added
+- Added parameter to change background map source in layer preview
+- Dependency updates
+
+Fixes:
+
+- Rendering issue: Check for existing tile coordinates before using them
+- Fix mixed image format for file, S3 and azureblob caches
+
+
+2.0.0 2023-12-19
+~~~~~~~~~~~~~~~~~
+Breaking:
+
+- Removal of old unsupported python versions 3.7
+- Tested python version range is now 3.8 to 3.11
+- Lots of dependency updates
+
+Improvements:
+
+- Add S3 performance option to request via urllib2
+- Allow md5 calls to work in FIPS environments
+- Several Redis Cache enhancements
+- Coverage support for caches
+
+Fixes:
+
+- Configure image options for caches (fixes erratically white tiles when requesting multiple cached layers)
+- Fix for Legends in JSON Format
+- Some more minor fixups
+
+
+1.16.0 2023-04-13
+~~~~~~~~~~~~~~~~~
+Breaking:
+
+- Removal of old unsupported python versions 2.7 and 3.6
+- Tested python version range is now 3.7 to 3.11
+- Lots of dependency updates
+
+Improvements:
+
+- New cache: Azure Blob storage
+- Lots of dependency updates
+- Support for JSON legends
+- Updated layer preview to use latest openlayers
+- Official docker images released, documentation updated
+
+Fixes:
+
+- Fixed issues with sqlite cache (#629 and #625)
+- Dependency correction
+- library detection difficulties on some operating systems
+- encoding issues with umlauts in featureinfo
+- Several minor bugfixes
+- mapproxy-util export - derive image format from cache config
+
 1.15.1 2022-06-14
 ~~~~~~~~~~~~~~~~~
 

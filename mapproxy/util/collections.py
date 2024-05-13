@@ -15,8 +15,8 @@
 
 from __future__ import absolute_import
 from collections import deque
-from mapproxy.compat.itertools import islice
-from mapproxy.compat import string_type
+from itertools import islice
+
 
 class LRU(object):
     """
@@ -31,6 +31,7 @@ class LRU(object):
     Get/Set existing: O(1) newest to O(n) for oldest entry
     Contains: O(1)
     """
+
     def __init__(self, size=100):
         self.size = size
         self.values = {}
@@ -49,7 +50,7 @@ class LRU(object):
 
         return '<LRU size=%d values=%s%s>' % (
             self.size, repr(last_values)[:-1],
-            ', ...]' if len(self)>10 else ']')
+            ', ...]' if len(self) > 10 else ']')
 
     def __getitem__(self, key):
         result = self.values[key]
@@ -98,6 +99,7 @@ class ImmutableDictList(object):
     >>> d[0], d[1]
     (23, 24)
     """
+
     def __init__(self, items):
         self._names = []
         self._values = {}
@@ -106,7 +108,7 @@ class ImmutableDictList(object):
             self._names.append(name)
 
     def __getitem__(self, name):
-        if isinstance(name, string_type):
+        if isinstance(name, str):
             return self._values[name]
         else:
             return self._values[self._names[name]]

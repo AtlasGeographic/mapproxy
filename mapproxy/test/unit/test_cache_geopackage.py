@@ -16,7 +16,6 @@
 from __future__ import division
 
 import os
-import sqlite3
 import threading
 import time
 
@@ -24,13 +23,14 @@ from io import BytesIO
 
 from mapproxy.cache.geopackage import GeopackageCache, GeopackageLevelCache
 from mapproxy.cache.tile import Tile
-from mapproxy.grid import tile_grid, TileGrid
+from mapproxy.grid.tile_grid import tile_grid, TileGrid
 from mapproxy.image import ImageSource
 from mapproxy.layer import MapExtent
 from mapproxy.srs import SRS
-from mapproxy.test.helper import assert_files_in_dir
+from mapproxy.test.helper import assert_files_in_dir, assert_permissions
 from mapproxy.test.unit.test_cache_tile import TileCacheTestBase
 from mapproxy.util.coverage import coverage
+from mapproxy.util.sqlite3 import sqlite3
 
 
 GLOBAL_WEBMERCATOR_EXTENT = MapExtent(
@@ -182,7 +182,7 @@ class TestGeopackageLevelCache(TileCacheTestBase):
         self.cache.store_tile(self.create_tile((0, 0, 2)))
         assert_files_in_dir(self.cache_dir, ['1.gpkg', '2.gpkg'], glob='*.gpkg')
 
-        self.cache.remove_level_tiles_before(1, timestamp=0)
+        self.cache.remove_level_tiles_before(1, remove_all=True)
         assert_files_in_dir(self.cache_dir, ['2.gpkg'], glob='*.gpkg')
 
     def test_remove_level_tiles_before(self):
@@ -195,7 +195,7 @@ class TestGeopackageLevelCache(TileCacheTestBase):
         self.cache.remove_level_tiles_before(1, timestamp=time.time() - 60)
         assert self.cache.is_cached(Tile((0, 0, 1)))
 
-        self.cache.remove_level_tiles_before(1, timestamp=0)
+        self.cache.remove_level_tiles_before(1, remove_all=True)
         assert not self.cache.is_cached(Tile((0, 0, 1)))
 
         assert_files_in_dir(self.cache_dir, ['1.gpkg', '2.gpkg'], glob='*.gpkg')
@@ -254,3 +254,27 @@ class TestGeopackageCacheInitErrors(object):
         except ValueError as ve:
             error_msg = ve
         assert "res is improperly configured." in str(error_msg)
+
+
+class TestGeopackageCachePermissions(TileCacheTestBase):
+
+    always_loads_metadata = True
+
+    def setup_method(self):
+        TileCacheTestBase.setup_method(self)
+        self.gpkg_file = os.path.join(self.cache_dir, 'tmp.gpkg')
+        self.table_name = 'test_tiles'
+        self.cache = GeopackageCache(
+            self.gpkg_file,
+            tile_grid=tile_grid(3857, name='global-webmarcator'),
+            table_name=self.table_name,
+            file_permissions='700'
+        )
+
+    def teardown_method(self):
+        if self.cache:
+            self.cache.cleanup()
+        TileCacheTestBase.teardown_method(self)
+
+    def test_permissions(self):
+        assert_permissions(self.gpkg_file, '700')

@@ -36,7 +36,7 @@ Tile caching (creation, caching and retrieval of tiles).
 """
 from functools import partial
 from contextlib import contextmanager
-from mapproxy.grid import MetaGrid
+from mapproxy.grid.meta_grid import MetaGrid
 from mapproxy.image import BlankImageSource
 from mapproxy.image.mask import mask_image_source_from_coverage
 from mapproxy.image.opts import ImageOptions
@@ -236,7 +236,7 @@ class TileManager(object):
         cached = self.cache.is_cached(tile, dimensions=dimensions)
         max_mtime = self.expire_timestamp(tile)
         if cached and max_mtime is not None:
-            self.cache.load_tile_metadata(tile)
+            self.cache.load_tile_metadata(tile, dimensions=self.dimensions)
             # file time stamp must be rounded to integer since time conversion functions
             # mktime and timetuple strip decimals from seconds
             stale = int(tile.timestamp) <= max_mtime
@@ -558,7 +558,7 @@ class TileCreator(object):
                         async_pool.shutdown(True)
                         reraise(ex)
 
-                self.cache.store_tiles([t for t in tiles if t.cacheable])
+                self.cache.store_tiles([t for t in tiles if t.cacheable], dimensions=self.dimensions)
                 return tiles
 
             # else

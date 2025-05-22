@@ -15,7 +15,7 @@
 
 
 import codecs
-import datetime
+from datetime import timezone, datetime
 import json
 import socket
 import time
@@ -227,7 +227,7 @@ class CouchDBCache(TileCacheBase):
             return True
         return False
 
-    def remove_tile(self, tile):
+    def remove_tile(self, tile, dimensions=None):
         if tile.coord is None:
             return True
         url = self.document_url(tile.coord)
@@ -245,7 +245,7 @@ class CouchDBCache(TileCacheBase):
 
 
 def utc_now_isoformat():
-    now = datetime.datetime.utcnow()
+    now = datetime.now(timezone.utc)
     now = now.isoformat()
     # remove milliseconds, add Zulu timezone
     now = now.rsplit('.', 1)[0] + 'Z'

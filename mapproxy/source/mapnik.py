@@ -22,7 +22,7 @@ import threading
 import multiprocessing
 from io import BytesIO
 
-from mapproxy.grid import tile_grid
+from mapproxy.grid.tile_grid import tile_grid
 from mapproxy.image import ImageSource
 from mapproxy.image.opts import ImageOptions
 from mapproxy.layer import MapExtent, DefaultMapExtent, BlankImage, MapLayer
@@ -41,15 +41,10 @@ except ImportError:
     except ImportError:
         mapnik = None
 
-try:
-    import queue
-    Queue = queue.Queue
-    Empty = queue.Empty
-    Full = queue.Full
-except ImportError:  # in python2 it is called Queue
-    import Queue
-    Empty = Queue.Empty
-    Full = Queue.Full
+import queue
+Queue = queue.Queue
+Empty = queue.Empty
+Full = queue.Full
 MAX_UNUSED_MAPS = 10
 
 # fake 2.0 API for older versions

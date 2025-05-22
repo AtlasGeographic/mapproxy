@@ -18,6 +18,7 @@ Tile retrieval (WMS, TMS, etc.).
 """
 import sys
 import time
+from typing import Any
 
 from mapproxy.version import version
 from mapproxy.image import ImageSource
@@ -76,11 +77,13 @@ class VerifiedHTTPSConnection(httplib.HTTPSConnection):
 
         # wrap the socket using verification with the root
         #    certs in self.ca_certs_path
-        self.sock = ssl.wrap_socket(sock,
-                                    self.key_file,
-                                    self.cert_file,
-                                    cert_reqs=ssl.CERT_REQUIRED,
-                                    ca_certs=self._ca_certs)
+        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        context.verify_mode = ssl.CERT_REQUIRED
+        context.load_cert_chain(certfile=self.cert_file, keyfile=self.key_file)
+        context.load_verify_locations(cafile=self._ca_certs)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+
+        self.sock = context.wrap_socket(sock, server_hostname=self.host)
 
 
 def verified_https_connection_with_ca_certs(ca_certs):
@@ -151,18 +154,19 @@ class HTTPClient(object):
                  ssl_ca_certs=None, timeout=None, headers=None, hide_error_details=False,
                  manage_cookies=False):
         self._timeout = timeout
-        if url and url.startswith('https'):
-            if insecure:
-                ssl_ca_certs = None
+        if url and url.startswith('https') and insecure:
+            ssl_ca_certs = None
 
         self.opener = create_url_opener(ssl_ca_certs, url, username, password,
                                         insecure=insecure, manage_cookies=manage_cookies)
         self.header_list = headers.items() if headers else []
         self.hide_error_details = hide_error_details
 
-    def open(self, url, data=None, method=None):
+    def open(self, url, data=None, method=None) -> Any:
         code = None
         result = None
+        start_time = time.time()
+        req = None
         try:
             req = urllib2.Request(url, data=data)
         except ValueError as e:
@@ -173,7 +177,6 @@ class HTTPClient(object):
         if method:
             req.method = method
         try:
-            start_time = time.time()
             if self._timeout is not None:
                 result = self.opener.open(req, timeout=self._timeout)
             else:

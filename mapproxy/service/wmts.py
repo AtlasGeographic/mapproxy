@@ -18,7 +18,10 @@ WMS service handler
 """
 from __future__ import print_function
 
+import re
 from functools import partial
+import logging
+from collections import OrderedDict
 
 from mapproxy.request.wmts import (
     wmts_request, make_wmts_rest_request_parser,
@@ -31,10 +34,8 @@ from mapproxy.service.base import Server
 from mapproxy.response import Response
 from mapproxy.exception import RequestError
 from mapproxy.util.coverage import load_limited_to
-from mapproxy.util.ext.odict import odict
 
 from mapproxy.template import template_loader, bunch
-import logging
 
 env = {'bunch': bunch}
 get_template = template_loader(__package__, 'templates', namespace=env)
@@ -44,7 +45,7 @@ log = logging.getLogger(__name__)
 class WMTSServer(Server):
     service = 'wmts'
 
-    def __init__(self, layers, md, request_parser=None, max_tile_age=None, info_formats={}):
+    def __init__(self, layers, md, request_parser=None, max_tile_age=None, info_formats=None):
         Server.__init__(self)
         self.request_parser = request_parser or wmts_request
         self.md = md
@@ -52,11 +53,11 @@ class WMTSServer(Server):
         self.layers, self.matrix_sets = self._matrix_sets(layers)
         self.capabilities_class = Capabilities
         self.fi_transformers = None
-        self.info_formats = info_formats
+        self.info_formats = info_formats or {}
 
     def _matrix_sets(self, layers):
         sets = {}
-        layers_grids = odict()
+        layers_grids = OrderedDict()
         for layer in layers.values():
             grid = layer.grid
             if not grid.supports_access_with_origin('nw'):
@@ -68,8 +69,8 @@ class WMTSServer(Server):
                     sets[grid.name] = TileMatrixSet(grid)
                 except AssertionError:
                     continue  # TODO
-            layers_grids.setdefault(layer.name, odict())[grid.name] = layer
-        wmts_layers = odict()
+            layers_grids.setdefault(layer.name, OrderedDict())[grid.name] = layer
+        wmts_layers = OrderedDict()
         for layer_name, layers in layers_grids.items():
             wmts_layers[layer_name] = WMTSTileLayer(layers)
         return wmts_layers, sets.values()
@@ -183,7 +184,7 @@ class WMTSServer(Server):
             if result['authorized'] == 'unauthenticated':
                 raise RequestError('unauthorized', status=401)
             if result['authorized'] == 'full':
-                return self.layers.values()
+                return list(self.layers.values())
             if result['authorized'] == 'none':
                 raise RequestError('forbidden', status=403)
             allowed_layers = []
@@ -192,7 +193,7 @@ class WMTSServer(Server):
                     allowed_layers.append(layer)
             return allowed_layers
         else:
-            return self.layers.values()
+            return list(self.layers.values())
 
     def check_request(self, request, info_formats=None):
         request.make_request()
@@ -236,12 +237,12 @@ class WMTSRestServer(WMTSServer):
     default_template = '/{Layer}/{TileMatrixSet}/{TileMatrix}/{TileCol}/{TileRow}.{Format}'
     default_info_template = '/{Layer}/{TileMatrixSet}/{TileMatrix}/{TileCol}/{TileRow}/{I}/{J}.{InfoFormat}'
 
-    def __init__(self, layers, md, max_tile_age=None, template=None, fi_template=None, info_formats={}):
+    def __init__(self, layers, md, max_tile_age=None, template=None, fi_template=None, info_formats=None):
         WMTSServer.__init__(self, layers, md)
         self.max_tile_age = max_tile_age
         self.template = template or self.default_template
         self.fi_template = fi_template or self.default_info_template
-        self.info_formats = info_formats
+        self.info_formats = info_formats or {}
         self.url_converter = URLTemplateConverter(self.template)
         self.fi_url_converter = FeatureInfoURLTemplateConverter(self.fi_template)
         self.request_parser = make_wmts_rest_request_parser(self.url_converter, self.fi_url_converter)
@@ -263,21 +264,35 @@ class Capabilities(object):
     Renders WMS capabilities documents.
     """
 
-    def __init__(self, server_md, layers, matrix_sets, info_formats={}):
+    def __init__(self, server_md, layers, matrix_sets, info_formats=None):
         self.service = server_md
         self.layers = layers
-        self.info_formats = info_formats
+        self.info_formats = info_formats or {}
         self.matrix_sets = matrix_sets
 
     def render(self, _map_request):
         return self._render_template(_map_request.capabilities_template)
 
     def template_context(self):
-        return dict(service=bunch(default='', **self.service),
+        service = bunch(default='', **self.service)
+        base_url = re.sub(r'/service$', '', service.url)
+        legendurls = {}
+        for layer in self.layers:
+            if layer.md['wmts_kvp_legendurl'] is not None:
+                legendurls[layer.name] = (
+                    layer.md['wmts_kvp_legendurl']
+                    .replace('{base_url}', base_url)
+                    .replace('{layer_name}', layer.name)
+                )
+            else:
+                legendurls[layer.name] = None
+
+        return dict(service=service,
                     restful=False,
                     layers=self.layers,
                     info_formats=self.info_formats,
-                    tile_matrix_sets=self.matrix_sets)
+                    tile_matrix_sets=self.matrix_sets,
+                    legendurls=legendurls)
 
     def _render_template(self, template):
         template = get_template(template)
@@ -288,13 +303,26 @@ class Capabilities(object):
 
 
 class RestfulCapabilities(Capabilities):
-    def __init__(self, server_md, layers, matrix_sets, url_converter, fi_url_converter, info_formats={}):
+    def __init__(self, server_md, layers, matrix_sets, url_converter, fi_url_converter, info_formats=None):
         Capabilities.__init__(self, server_md, layers, matrix_sets, info_formats=info_formats)
         self.url_converter = url_converter
         self.fi_url_converter = fi_url_converter
 
     def template_context(self):
-        return dict(service=bunch(default='', **self.service),
+        service = bunch(default='', **self.service)
+        base_url = re.sub(r'/wmts$', '', service.url)
+        legendurls = {}
+        for layer in self.layers:
+            if layer.md['wmts_rest_legendurl'] is not None:
+                legendurls[layer.name] = (
+                    layer.md['wmts_rest_legendurl']
+                    .replace('{base_url}', base_url)
+                    .replace('{layer_name}', layer.name)
+                )
+            else:
+                legendurls[layer.name] = None
+
+        return dict(service=service,
                     restful=True,
                     layers=self.layers,
                     info_formats=self.info_formats,
@@ -306,6 +334,7 @@ class RestfulCapabilities(Capabilities):
                     dimension_keys=dict((k.lower(), k) for k in self.url_converter.dimensions),
                     format_resource_template=format_resource_template,
                     format_info_resource_template=format_info_resource_template,
+                    legendurls=legendurls
                     )
 
 
@@ -337,7 +366,7 @@ class WMTSTileLayer(object):
     def __init__(self, layers):
         self.grids = [lyr.grid for lyr in layers.values()]
         self.layers = layers
-        self._layer = layers[layers.keys()[0]]
+        self._layer = layers[list(layers.keys())[0]]
 
     def __getattr__(self, name):
         return getattr(self._layer, name)
@@ -377,11 +406,11 @@ class TileMatrixSet(object):
             if self.grid.srs.is_axis_order_ne:
                 topleft = bbox[3], bbox[0]
             grid_size = self.grid.grid_sizes[level]
-            scale_denom = res / (0.28 / 1000) * meter_per_unit(self.grid.srs)
+            scale_denom = round(res / (0.28 / 1000) * meter_per_unit(self.grid.srs), 10)
             yield bunch(
                 identifier=level,
                 topleft=topleft,
                 grid_size=grid_size,
-                scale_denom=scale_denom,
+                scale_denom=f'{scale_denom}'.strip('0').strip('.'),
                 tile_size=self.grid.tile_size,
             )

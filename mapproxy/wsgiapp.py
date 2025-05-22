@@ -34,6 +34,7 @@ from mapproxy.request import Request
 from mapproxy.response import Response
 from mapproxy.config import local_base_config
 from mapproxy.config.loader import load_configuration, ConfigurationError
+from mapproxy.util.escape import escape_html
 
 log = logging.getLogger('mapproxy.config')
 log_wsgiapp = logging.getLogger('mapproxy.wsgiapp')
@@ -111,6 +112,13 @@ def wrap_wsgi_debug(app, conf):
     return app
 
 
+request_interceptors = set()
+
+
+def register_request_interceptor(interceptor):
+    request_interceptors.add(interceptor)
+
+
 class MapProxyApp(object):
     """
     The MapProxy WSGI application.
@@ -128,6 +136,9 @@ class MapProxyApp(object):
     def __call__(self, environ, start_response):
         resp = None
         req = Request(environ)
+
+        for interceptor in request_interceptors:
+            req = interceptor(req)
 
         if self.cors_origin:
             orig_start_response = start_response
@@ -154,7 +165,7 @@ class MapProxyApp(object):
                             resp = Response('internal error', status=500)
             if resp is None:
                 if req.path in ('', '/'):
-                    resp = self.welcome_response(req.script_url)
+                    resp = self.welcome_response(escape_html(req.script_url))
                 else:
                     resp = Response('not found', mimetype='text/plain', status=404)
             return resp(environ, start_response)

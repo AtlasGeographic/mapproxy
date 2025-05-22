@@ -110,12 +110,6 @@ source_commons = combined(
     }
 )
 
-riak_node = {
-    'host': str(),
-    'pb_port': number(),
-    'http_port': number(),
-}
-
 cache_commons = combined(
     {
         'coverage': coverage,
@@ -128,6 +122,8 @@ cache_types = {
         'use_grid_names': bool(),
         'directory': str(),
         'tile_lock_dir': str(),
+        'directory_permissions': str(),
+        'file_permissions': str(),
     }),
     'sqlite': combined(cache_commons, {
         'directory': str(),
@@ -135,12 +131,16 @@ cache_types = {
         'sqlite_wal': bool(),
         'tile_lock_dir': str(),
         'ttl': int(),
+        'directory_permissions': str(),
+        'file_permissions': str(),
     }),
     'mbtiles': combined(cache_commons, {
         'filename': str(),
         'sqlite_timeout': number(),
         'sqlite_wal': bool(),
         'tile_lock_dir': str(),
+        'directory_permissions': str(),
+        'file_permissions': str(),
     }),
     'geopackage': combined(cache_commons, {
         'filename': str(),
@@ -148,6 +148,8 @@ cache_types = {
         'tile_lock_dir': str(),
         'table_name': str(),
         'levels': bool(),
+        'directory_permissions': str(),
+        'file_permissions': str(),
     }),
     'couchdb': combined(cache_commons, {
         'url': str(),
@@ -168,17 +170,7 @@ cache_types = {
         'access_control_list': str(),
         'tile_lock_dir': str(),
         'use_http_get': bool(),
-    }),
-    'riak': combined(cache_commons, {
-        'nodes': [riak_node],
-        'protocol': one_of('pbc', 'http', 'https'),
-        'bucket': str(),
-        'default_ports': {
-            'pb': number(),
-            'http': number(),
-        },
-        'secondary_index': bool(),
-        'tile_lock_dir': str(),
+        'include_grid_name': bool(),
     }),
     'redis': combined(cache_commons, {
         'host': str(),
@@ -196,6 +188,8 @@ cache_types = {
         'directory': str(),
         required('version'): number(),
         'tile_lock_dir': str(),
+        'directory_permissions': str(),
+        'file_permissions': str(),
     }),
     'azureblob': combined(cache_commons, {
         'connection_string': str(),
@@ -395,6 +389,8 @@ mapproxy_yaml_spec = {
             'base_dir': str(),
             'lock_dir': str(),
             'tile_lock_dir': str(),
+            'directory_permissions': str(),
+            'file_permissions': str(),
             'meta_size': [number()],
             'meta_buffer': number(),
             'bulk_meta_tiles': bool(),
@@ -615,6 +611,8 @@ mapproxy_yaml_spec = {
             'name': str(),
             required('title'): str,
             'legendurl': str(),
+            'wmts_rest_legendurl': str(),
+            'wmts_kvp_legendurl': str(),
             'layers': recursive(),
             'md': wms_130_layer_md,
             'dimensions': {

@@ -19,11 +19,11 @@ Configuration loading and system initializing.
 from __future__ import division
 from mapproxy.util.fs import find_exec
 from mapproxy.util.yaml import load_yaml_file, YAMLError
-from mapproxy.util.ext.odict import odict
 from mapproxy.util.py import memoize
 from mapproxy.config.spec import validate_options, add_source_to_mapproxy_yaml_spec, add_service_to_mapproxy_yaml_spec
 from mapproxy.config.validator import validate
 from mapproxy.config import load_default_config, finish_base_config, defaults
+from mapproxy.service.ows import OWSServer
 
 import os
 import sys
@@ -31,6 +31,7 @@ import hashlib
 import warnings
 from copy import deepcopy, copy
 from functools import partial
+from collections import OrderedDict
 
 import logging
 from urllib.parse import urlparse
@@ -73,7 +74,7 @@ class ProxyConfiguration(object):
             self.grids[grid_name] = GridConfiguration(grid_conf, context=self)
 
     def load_caches(self):
-        self.caches = odict()
+        self.caches = OrderedDict()
         caches_conf = self.configuration.get('caches')
         if not caches_conf:
             return
@@ -90,7 +91,7 @@ class ProxyConfiguration(object):
             self.sources[source_name] = SourceConfiguration.load(conf=source_conf, context=self)
 
     def load_tile_layers(self):
-        self.layers = odict()
+        self.layers = OrderedDict()
         layers_conf = deepcopy(self._layers_conf_dict())
         if layers_conf is None:
             return
@@ -177,7 +178,7 @@ class ProxyConfiguration(object):
                 # layer list without root -> wrap in root layer
                 layers_conf = dict(title=None, layers=layers_conf)
 
-        if len(set(layers_conf.keys()) &
+        if len(layers_conf.keys() &
                set('layers name title sources'.split())) < 2:
             # looks like unordered legacy config
             layers_conf = self._legacy_layers_conf_dict()
@@ -189,7 +190,7 @@ class ProxyConfiguration(object):
         Returns a dictionary with all layers that have a name and sources.
         Flattens the layer tree.
         """
-        layers = _layers if _layers is not None else odict()
+        layers = _layers if _layers is not None else OrderedDict()
 
         if 'layers' in layers_conf:
             for layer in layers_conf.pop('layers'):
@@ -244,7 +245,7 @@ def list_of_dicts_to_ordered_dict(dictlist):
     [('a', 1), ('b', 2), ('c', 3)]
     """
 
-    result = odict()
+    result = OrderedDict()
     for d in dictlist:
         for k, v in d.items():
             result[k] = v
@@ -273,7 +274,7 @@ class ConfigurationBase(object):
 class GridConfiguration(ConfigurationBase):
     @memoize
     def tile_grid(self):
-        from mapproxy.grid import tile_grid
+        from mapproxy.grid.tile_grid import tile_grid
 
         if 'base' in self.conf:
             base_grid_name = self.conf['base']
@@ -636,7 +637,7 @@ class SourceConfiguration(ConfigurationBase):
 
 
 def resolution_range(conf):
-    from mapproxy.grid import resolution_range as _resolution_range
+    from mapproxy.grid.resolutions import resolution_range as _resolution_range
     if 'min_res' in conf or 'max_res' in conf:
         return _resolution_range(min_res=conf.get('min_res'),
                                  max_res=conf.get('max_res'))
@@ -731,7 +732,20 @@ class WMSSourceConfiguration(SourceConfiguration):
             prefix = 'file://'
             url = prefix + context.globals.abspath(url[7:])
         lg_client = WMSLegendURLClient(url)
-        legend_cache = LegendCache(cache_dir=cache_dir)
+
+        global_directory_permissions = context.globals.get_value('directory_permissions', None,
+                                                     global_key='cache.directory_permissions')
+        if global_directory_permissions:
+            log.info(f'Using global directory permission configuration for static legend cache:'
+                     f' {global_directory_permissions}')
+
+        global_file_permissions = context.globals.get_value(
+            'file_permissions', None, global_key='cache.file_permissions')
+        if global_file_permissions:
+            log.info(f'Using global file permission configuration for static legend cache: {global_file_permissions}')
+
+        legend_cache = LegendCache(cache_dir=cache_dir, directory_permissions=global_directory_permissions,
+                                   file_permissions=global_file_permissions)
         return WMSLegendSource([lg_client], legend_cache, static=True)
 
     def fi_xslt_transformer(self, conf, context):
@@ -788,9 +802,24 @@ class WMSSourceConfiguration(SourceConfiguration):
             lock_dir = self.context.globals.get_path('cache.lock_dir', self.conf)
             lock_timeout = self.context.globals.get_value('http.client_timeout', self.conf)
             url = urlparse(self.conf['req']['url'])
+
+            global_directory_permissions = self.context.globals.get_value('directory_permissions', self.conf,
+                                                                          global_key='cache.directory_permissions')
+            if global_directory_permissions:
+                log.info(f'Using global directory permission configuration for concurrent file locks:'
+                         f' {global_directory_permissions}')
+
+            global_file_permissions = self.context.globals.get_value('file_permissions', self.conf,
+                                                                     global_key='cache.file_permissions')
+            if global_file_permissions:
+                log.info(f'Using global file permission configuration for concurrent file locks:'
+                         f' {global_file_permissions}')
+
             md5 = hashlib.new('md5', url.netloc.encode('ascii'), usedforsecurity=False)
             lock_file = os.path.join(lock_dir, md5.hexdigest() + '.lck')
-            lock = lambda: SemLock(lock_file, concurrent_requests, timeout=lock_timeout)  # noqa
+            lock = lambda: SemLock(lock_file, concurrent_requests, timeout=lock_timeout,  # noqa
+                                   directory_permissions=global_directory_permissions,
+                                   file_permissions=global_file_permissions)
 
         coverage = self.coverage()
         res_range = resolution_range(self.conf)
@@ -882,7 +911,21 @@ class WMSSourceConfiguration(SourceConfiguration):
                 http_client, lg_request.url = self.http_client(lg_request.url)
                 lg_client = WMSLegendClient(lg_request, http_client=http_client)
                 lg_clients.append(lg_client)
-            legend_cache = LegendCache(cache_dir=cache_dir)
+
+            global_directory_permissions = self.context.globals.get_value('directory_permissions', self.conf,
+                                                                   global_key='cache.directory_permissions')
+            if global_directory_permissions:
+                log.info(f'Using global directory permission configuration for legend cache:'
+                         f' {global_directory_permissions}')
+
+            global_file_permissions = self.context.globals.get_value('file_permissions', self.conf,
+                                                              global_key='cache.file_permissions')
+            if global_file_permissions:
+                log.info(f'Using global file permission configuration for legend cache:'
+                         f' {global_file_permissions}')
+
+            legend_cache = LegendCache(cache_dir=cache_dir, directory_permissions=global_directory_permissions,
+                                       file_permissions=global_file_permissions)
             lg_source = WMSLegendSource(lg_clients, legend_cache)
         return lg_source
 
@@ -935,9 +978,24 @@ class MapnikSourceConfiguration(SourceConfiguration):
             from mapproxy.util.lock import SemLock
             lock_dir = self.context.globals.get_path('cache.lock_dir', self.conf)
             mapfile = self.conf['mapfile']
+
+            global_directory_permissions = self.context.globals.get_value('directory_permissions', self.conf,
+                                                                          global_key='cache.directory_permissions')
+            if global_directory_permissions:
+                log.info(f'Using global directory permission configuration for concurrent file locks:'
+                         f' {global_directory_permissions}')
+
+            global_file_permissions = self.context.globals.get_value('file_permissions', self.conf,
+                                                                     global_key='cache.file_permissions')
+            if global_file_permissions:
+                log.info(f'Using global file permission configuration for concurrent file locks:'
+                         f' {global_file_permissions}')
+
             md5 = hashlib.new('md5', mapfile.encode('utf-8'), usedforsecurity=False)
             lock_file = os.path.join(lock_dir, md5.hexdigest() + '.lck')
-            lock = lambda: SemLock(lock_file, concurrent_requests)  # noqa
+            lock = lambda: SemLock(lock_file, concurrent_requests, # noqa
+                                   directory_permissions=global_directory_permissions,
+                                   file_permissions=global_file_permissions)
 
         coverage = self.coverage()
         res_range = resolution_range(self.conf)
@@ -1090,6 +1148,36 @@ class CacheConfiguration(ConfigurationBase):
                                              global_key='cache.base_dir')
 
     @memoize
+    def directory_permissions(self):
+        directory_permissions = self.conf.get('cache', {}).get('directory_permissions')
+        if directory_permissions:
+            log.info('Using cache specific directory permission configuration for %s: %s',
+                     self.conf['name'], directory_permissions)
+            return directory_permissions
+
+        global_permissions = self.context.globals.get_value('directory_permissions', self.conf,
+                global_key='cache.directory_permissions')
+        if global_permissions:
+            log.info('Using global directory permission configuration for %s: %s',
+                 self.conf['name'], global_permissions)
+        return global_permissions
+
+    @memoize
+    def file_permissions(self):
+        file_permissions = self.conf.get('cache', {}).get('file_permissions')
+        if file_permissions:
+            log.info('Using cache specific file permission configuration for %s: %s',
+                     self.conf['name'], file_permissions)
+            return file_permissions
+
+        global_permissions = self.context.globals.get_value('file_permissions', self.conf,
+                global_key='cache.file_permissions')
+        if global_permissions:
+            log.info('Using global file permission configuration for %s: %s',
+                 self.conf['name'], global_permissions)
+        return global_permissions
+
+    @memoize
     def has_multiple_grids(self):
         return len(self.grid_confs()) > 1
 
@@ -1131,7 +1219,9 @@ class CacheConfiguration(ConfigurationBase):
             image_opts=image_opts,
             directory_layout=directory_layout,
             link_single_color_images=link_single_color_images,
-            coverage=coverage
+            coverage=coverage,
+            directory_permissions=self.directory_permissions(),
+            file_permissions=self.file_permissions()
         )
 
     def _mbtiles_cache(self, grid_conf, image_opts):
@@ -1154,7 +1244,9 @@ class CacheConfiguration(ConfigurationBase):
             mbfile_path,
             timeout=sqlite_timeout,
             wal=wal,
-            coverage=coverage
+            coverage=coverage,
+            directory_permissions=self.directory_permissions(),
+            file_permissions=self.file_permissions()
         )
 
     def _geopackage_cache(self, grid_conf, image_opts):
@@ -1189,11 +1281,21 @@ class CacheConfiguration(ConfigurationBase):
 
         if levels:
             return GeopackageLevelCache(
-                cache_dir, grid_conf.tile_grid(), table_name, coverage=coverage
+                cache_dir,
+                grid_conf.tile_grid(),
+                table_name,
+                coverage=coverage,
+                directory_permissions=self.directory_permissions(),
+                file_permissions=self.file_permissions()
             )
         else:
             return GeopackageCache(
-                gpkg_file_path, grid_conf.tile_grid(), table_name, coverage=coverage
+                gpkg_file_path,
+                grid_conf.tile_grid(),
+                table_name,
+                coverage=coverage,
+                directory_permissions=self.directory_permissions(),
+                file_permissions=self.file_permissions()
             )
 
     def _azureblob_cache(self, grid_conf, image_opts):
@@ -1253,9 +1355,16 @@ class CacheConfiguration(ConfigurationBase):
                                                       global_key='cache.s3.use_http_get'
                                                       )
 
+        include_grid_name = self.context.globals.get_value('cache.include_grid_name', self.conf,
+                                                      global_key='cache.s3.include_grid_name')
+
         directory_layout = self.conf['cache'].get('directory_layout', 'tms')
 
         base_path = self.conf['cache'].get('directory', None)
+
+        if include_grid_name and base_path:
+            base_path = os.path.join(base_path, grid_conf.tile_grid().name)
+
         if base_path is None:
             base_path = os.path.join(self.conf['name'], grid_conf.tile_grid().name)
 
@@ -1298,7 +1407,9 @@ class CacheConfiguration(ConfigurationBase):
             timeout=sqlite_timeout,
             wal=wal,
             ttl=self.conf.get('cache', {}).get('ttl', 0),
-            coverage=coverage
+            coverage=coverage,
+            directory_permissions=self.directory_permissions(),
+            file_permissions=self.file_permissions()
         )
 
     def _couchdb_cache(self, grid_conf, image_opts):
@@ -1317,43 +1428,15 @@ class CacheConfiguration(ConfigurationBase):
         tile_id = self.conf['cache'].get('tile_id')
         coverage = self.coverage()
 
-        return CouchDBCache(url=url, db_name=db_name,
-                            file_ext=image_opts.format.ext, tile_grid=grid_conf.tile_grid(),
-                            md_template=md_template, tile_id_template=tile_id, coverage=coverage)
-
-    def _riak_cache(self, grid_conf, image_opts):
-        from mapproxy.cache.riak import RiakCache
-
-        default_ports = self.conf['cache'].get('default_ports', {})
-        default_pb_port = default_ports.get('pb', 8087)
-        default_http_port = default_ports.get('http', 8098)
-        coverage = self.coverage()
-
-        nodes = self.conf['cache'].get('nodes')
-        if not nodes:
-            nodes = [{'host': '127.0.0.1'}]
-
-        for n in nodes:
-            if 'pb_port' not in n:
-                n['pb_port'] = default_pb_port
-            if 'http_port' not in n:
-                n['http_port'] = default_http_port
-
-        protocol = self.conf['cache'].get('protocol', 'pbc')
-        bucket = self.conf['cache'].get('bucket')
-        if not bucket:
-            suffix = grid_conf.tile_grid().name
-            bucket = self.conf['name'] + '_' + suffix
-
-        use_secondary_index = self.conf['cache'].get('secondary_index', False)
-        timeout = self.context.globals.get_value('http.client_timeout', self.conf)
-
-        return RiakCache(nodes=nodes, protocol=protocol, bucket=bucket,
-                         tile_grid=grid_conf.tile_grid(),
-                         use_secondary_index=use_secondary_index,
-                         timeout=timeout,
-                         coverage=coverage
-                         )
+        return CouchDBCache(
+            url=url,
+            db_name=db_name,
+            file_ext=image_opts.format.ext,
+            tile_grid=grid_conf.tile_grid(),
+            md_template=md_template,
+            tile_id_template=tile_id,
+            coverage=coverage
+        )
 
     def _redis_cache(self, grid_conf, image_opts):
         from mapproxy.cache.redis import RedisCache
@@ -1403,9 +1486,19 @@ class CacheConfiguration(ConfigurationBase):
 
         version = self.conf['cache']['version']
         if version == 1:
-            return CompactCacheV1(cache_dir=cache_dir, coverage=coverage)
+            return CompactCacheV1(
+                cache_dir=cache_dir,
+                coverage=coverage,
+                directory_permissions=self.directory_permissions(),
+                file_permissions=self.file_permissions()
+            )
         elif version == 2:
-            return CompactCacheV2(cache_dir=cache_dir, coverage=coverage)
+            return CompactCacheV2(
+                cache_dir=cache_dir,
+                coverage=coverage,
+                directory_permissions=self.directory_permissions(),
+                file_permissions=self.file_permissions()
+            )
 
         raise ConfigurationError("compact cache only supports version 1 or 2")
     
@@ -1685,8 +1778,22 @@ class CacheConfiguration(ConfigurationBase):
                 if not lock_dir:
                     lock_dir = os.path.join(cache_dir, 'tile_locks')
 
+                global_directory_permissions = self.context.globals.get_value('directory_permissions', self.conf,
+                                                                         global_key='cache.directory_permissions')
+                if global_directory_permissions:
+                    log.info(f'Using global directory permission configuration for tile locks:'
+                             f' {global_directory_permissions}')
+
+                global_file_permissions = self.context.globals.get_value('file_permissions', self.conf,
+                                                                         global_key='cache.file_permissions')
+                if global_file_permissions:
+                    log.info(f'Using global file permission configuration for tile locks:'
+                             f' {global_file_permissions}')
+
                 lock_timeout = self.context.globals.get_value('http.client_timeout', {})
-                locker = TileLocker(lock_dir, lock_timeout, identifier + '_renderd')
+                locker = TileLocker(lock_dir, lock_timeout, identifier + '_renderd',
+                                    directory_permissions=global_directory_permissions,
+                                    file_permissions=global_file_permissions)
                 # TODO band_merger
                 tile_creator_class = partial(RenderdTileCreator, renderd_address,
                                              priority=priority, tile_locker=locker)
@@ -1698,10 +1805,24 @@ class CacheConfiguration(ConfigurationBase):
             if isinstance(cache, DummyCache):
                 locker = DummyLocker()
             else:
+                global_directory_permissions = self.context.globals.get_value('directory_permissions', self.conf,
+                                                                              global_key='cache.directory_permissions')
+                if global_directory_permissions:
+                    log.info(f'Using global directory permission configuration for tile locks:'
+                             f' {global_directory_permissions}')
+
+                global_file_permissions = self.context.globals.get_value('file_permissions', self.conf,
+                                                                         global_key='cache.file_permissions')
+                if global_file_permissions:
+                    log.info(f'Using global file permission configuration for tile locks:'
+                             f' {global_file_permissions}')
+
                 locker = TileLocker(
                     lock_dir=self.lock_dir(),
                     lock_timeout=self.context.globals.get_value('http.client_timeout', {}),
                     lock_cache_id=cache.lock_cache_id,
+                    directory_permissions=global_directory_permissions,
+                    file_permissions=global_file_permissions
                 )
 
             mgr = TileManager(tile_grid, cache, sources, image_opts.format.ext,
@@ -1904,7 +2025,6 @@ class LayerConfiguration(ConfigurationBase):
     def tile_layers(self, grid_name_as_path=False):
         from mapproxy.service.tile import TileLayer
         from mapproxy.cache.dummy import DummyCache
-        from mapproxy.cache.file import FileCache
         sources = []
         fi_only_sources = []
         if 'tile_sources' in self.conf:
@@ -1949,10 +2069,10 @@ class LayerConfiguration(ConfigurationBase):
             for grid, extent, cache_source in self.context.caches[cache_name].caches():
                 disable_storage = self.context.configuration['caches'][cache_name].get('disable_storage', False)
                 if disable_storage:
-                    supported_cache_class = DummyCache
+                    supports_dimensions = isinstance(cache_source.cache, DummyCache)
                 else:
-                    supported_cache_class = FileCache
-                if dimensions and not isinstance(cache_source.cache, supported_cache_class):
+                    supports_dimensions = cache_source.cache.supports_dimensions
+                if dimensions and not supports_dimensions:
                     # caching of dimension layers is not supported yet
                     raise ConfigurationError(
                         "caching of dimension layer (%s) is not supported yet."
@@ -1971,13 +2091,26 @@ class LayerConfiguration(ConfigurationBase):
                 md['format'] = self.context.caches[cache_name].image_opts().format
                 md['cache_name'] = cache_name
                 md['extent'] = extent
+                md['wmts_kvp_legendurl'] = self.conf.get('wmts_kvp_legendurl')
+                md['wmts_rest_legendurl'] = self.conf.get('wmts_rest_legendurl')
+                if 'legendurl' in self.conf:
+                    wms_conf = self.context.services.conf.get('wms')
+                    if wms_conf is not None:
+                        versions = wms_conf.get('versions', ['1.3.0'])
+                        versions.sort(key=lambda s: [int(u) for u in s.split('.')])
+                        legendurl = (f'{{base_url}}/service?service=WMS&amp;request=GetLegendGraphic&amp;'
+                                     f'version={versions[-1]}&amp;format=image%2Fpng&amp;layer={{layer_name}}')
+                        if md['wmts_kvp_legendurl'] is None:
+                            md['wmts_kvp_legendurl'] = legendurl
+                        if md['wmts_rest_legendurl'] is None:
+                            md['wmts_rest_legendurl'] = legendurl
                 tile_layers.append(
                     TileLayer(
                         self.conf['name'], self.conf['title'],
                         info_sources=fi_sources,
                         md=md,
                         tile_manager=cache_source,
-                        dimensions=dimensions,
+                        dimensions=dimensions
                     )
                 )
 
@@ -2053,7 +2186,6 @@ class ServiceConfiguration(ConfigurationBase):
             creator = getattr(self, service_name + '_service', None)
             if not creator:
                 # If not a known service, try to use the plugin mechanism
-                global plugin_services
                 creator = plugin_services.get(service_name, None)
                 if not creator:
                     raise ValueError('unknown service: %s' % service_name)
@@ -2071,13 +2203,11 @@ class ServiceConfiguration(ConfigurationBase):
                 else:
                     services.append(new_service)
 
-        if ows_services:
-            from mapproxy.service.ows import OWSServer
-            services.append(OWSServer(ows_services))
+        services.append(OWSServer(ows_services))
         return services
 
     def tile_layers(self, conf, use_grid_names=False):
-        layers = odict()
+        layers = OrderedDict()
         for layer_name, layer_conf in self.context.layers.items():
             for tile_layer in layer_conf.tile_layers(grid_name_as_path=use_grid_names):
                 if not tile_layer:
@@ -2127,7 +2257,7 @@ class ServiceConfiguration(ConfigurationBase):
         max_tile_age *= 60 * 60  # seconds
 
         info_formats = conf.get('featureinfo_formats', [])
-        info_formats = odict((f['suffix'], f['mimetype']) for f in info_formats)
+        info_formats = OrderedDict((f['suffix'], f['mimetype']) for f in info_formats)
 
         if kvp is None and restful is None:
             kvp = restful = True
@@ -2180,7 +2310,7 @@ class ServiceConfiguration(ConfigurationBase):
             global_key='wms.concurrent_layer_renderer')
         image_formats_names = self.context.globals.get_value('image_formats', conf,
                                                              global_key='wms.image_formats')
-        image_formats = odict()
+        image_formats = OrderedDict()
         for format in image_formats_names:
             opts = self.context.globals.image_options.image_opts({}, format)
             if opts.format in image_formats:
@@ -2222,7 +2352,7 @@ class ServiceConfiguration(ConfigurationBase):
         services = list(self.context.services.conf.keys())
         md = self.context.services.conf.get('wms', {}).get('md', {}).copy()
         md.update(conf.get('md', {}))
-        layers = odict()
+        layers = OrderedDict()
         for layer_name, layer_conf in self.context.layers.items():
             lyr = layer_conf.wms_layer()
             if lyr:
@@ -2245,12 +2375,9 @@ class ServiceConfiguration(ConfigurationBase):
             kvp = wmts_conf.get('kvp')
             restful = wmts_conf.get('restful')
 
-            if kvp is None and restful is None:
-                kvp = restful = True
-
-            if kvp:
+            if kvp or kvp is None:
                 services.append('wmts_kvp')
-            if restful:
+            if restful or restful is None:
                 services.append('wmts_restful')
 
         if 'wms' in self.context.services.conf:
@@ -2259,7 +2386,7 @@ class ServiceConfiguration(ConfigurationBase):
                 # demo service only supports 1.1.1, use wms_111 as an indicator
                 services.append('wms_111')
 
-        layers = odict(sorted(layers.items(), key=lambda x: x[1].name))
+        layers = OrderedDict(sorted(layers.items(), key=lambda x: x[1].name))
         background = self.context.globals.get_value('background', conf)
 
         return DemoServer(
@@ -2307,6 +2434,10 @@ def load_configuration(mapproxy_conf, seed=False, ignore_warnings=True, renderd=
     errors = validate(conf_dict)
     for error in errors:
         log.warning(error)
+
+    services = conf_dict.get('services')
+    if services is not None and 'demo' in services:
+        log.warning('Application has demo page enabled. It is recommended to disable this in production.')
 
     return ProxyConfiguration(conf_dict, conf_base_dir=conf_base_dir, seed=seed,
                               renderd=renderd)

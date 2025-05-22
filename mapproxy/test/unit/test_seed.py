@@ -30,8 +30,7 @@ from mapproxy.seed.seeder import TileWalker, SeedTask, SeedProgress
 from mapproxy.cache.dummy import DummyLocker
 from mapproxy.cache.tile import TileManager
 from mapproxy.source.tile import TiledSource
-from mapproxy.grid import tile_grid_for_epsg
-from mapproxy.grid import TileGrid
+from mapproxy.grid.tile_grid import tile_grid_for_epsg, TileGrid
 from mapproxy.srs import SRS
 from mapproxy.util.coverage import BBOXCoverage, GeomCoverage
 from mapproxy.seed.config import before_timestamp_from_options, SeedConfigurationError
@@ -83,14 +82,14 @@ class TestSeeder(object):
         md = dict(name="", cache_name="", grid_name="")
         coverage = BBOXCoverage(bbox, srs)
         return SeedTask(
-            md, self.tile_mgr, levels, refresh_timestamp=None, coverage=coverage
+            md, self.tile_mgr, levels, refresh_timestamp=None, refresh_all=False, coverage=coverage
         )
 
     def make_geom_task(self, geom, srs, levels):
         md = dict(name="", cache_name="", grid_name="")
         coverage = GeomCoverage(geom, srs)
         return SeedTask(
-            md, self.tile_mgr, levels, refresh_timestamp=None, coverage=coverage
+            md, self.tile_mgr, levels, refresh_timestamp=None, refresh_all=False, coverage=coverage
         )
 
     def test_seed_full_bbox(self):
@@ -287,7 +286,7 @@ class TestProgressStore(object):
             assert store.status == {}
 
 
-class TestRemovebreforeTimetamp(object):
+class TestRemoveBeforeTimetamp(object):
 
     def test_from_time(self):
         ts = before_timestamp_from_options({"time": "2010-12-01T20:12:00"})

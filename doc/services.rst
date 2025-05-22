@@ -56,6 +56,12 @@ Adds an attribution (copyright) line to all WMS requests.
 
   ``keyword_list``
 
+.. _wms_inpire_md:
+
+``inspire_md``
+""""""""""""""
+``inspire_md`` is for inspire metadata. See :ref:`inspire`
+
 .. _wms_srs:
 
 ``srs``
@@ -131,7 +137,7 @@ You can define XSLT scripts to transform outgoing feature information. You can d
 ``xml``
   Define a script for ``INFO_FORMAT=application/vnd.ogc.gml`` and ``INFO_FORMAT=text/xml`` requests.
 
-See :ref:`FeatureInformation for more informaiton <fi_xslt>`.
+See :ref:`FeatureInformation for more information <fi_xslt>`.
 
 ``strict``
 """"""""""

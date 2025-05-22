@@ -7,7 +7,9 @@ from setuptools import setup, find_packages
 install_requires = [
     'PyYAML>=3.0',
     'future',
-    'pyproj>=2'
+    'pyproj>=2',
+    'jsonschema>=4',
+    'werkzeug<4'
 ]
 
 
@@ -60,11 +62,14 @@ def long_description(changelog_releases=10):
 
 setup(
     name='MapProxy',
-    version="2.0.2",
+    version="4.1.1",
     description='An accelerating proxy for tile and web map services',
     long_description=long_description(7),
+    long_description_content_type='text/x-rst',
     author='Oliver Tonnhofer',
     author_email='olt@omniscale.de',
+    maintainer='terrestris GmbH & Co. KG',
+    maintainer_email='info@terrestris.de',
     url='https://mapproxy.org',
     license='Apache Software License 2.0',
     packages=find_packages(),
@@ -75,20 +80,20 @@ setup(
             'mapproxy-util = mapproxy.script.util:main',
         ],
     },
-    package_data={'': ['*.xml', '*.yaml', '*.ttf', '*.wsgi', '*.ini']},
+    package_data={'': ['*.xml', '*.yaml', '*.ttf', '*.wsgi', '*.ini', '*.json']},
     install_requires=install_requires,
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "Topic :: Internet :: Proxy Servers",
         "Topic :: Internet :: WWW/HTTP :: WSGI",
         "Topic :: Scientific/Engineering :: GIS",
     ],
-    zip_safe=False,
+    zip_safe=False
 )

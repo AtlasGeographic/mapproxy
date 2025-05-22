@@ -1,5 +1,240 @@
-Nightly
-~~~~~~~~~~~~~~~~~
+4.1.1 2025-04-30
+~~~~~~~~~~~~~~~~
+
+Improvements:
+
+  - The scale denominator in the WMTS capabilites is now rounded to 10 digits after the decimal place.
+
+
+4.1.0 2025-04-29
+~~~~~~~~~~~~~~~~
+
+Improvements:
+
+  - It is now possible to integrate the grid name into paths for AWS buckets. This allows storage of tiles for multiple
+    grids in the same bucket.
+  - We are returning a 404 http status code instead of a 500 if no legend graphic is found for a service.
+  - We are using utf-8 in GetFeatureInfo requests now.
+
+Maintenance:
+
+  - Updated some dependencies.
+  - Updated the GitHub runner versions.
+  - Refactored the grid.py file into multiple files.
+  - Removed the implementation of odict in favour of the builtin OrderedDict class.
+  - Added support for python 3.13.
+  - Skipping permissions tests if tests are run with root user. This is necessary to build and test MapProxy in a chroot
+    environment which is used to package MapProxy for Debian. Normal testing is not affected.
+
+Fixes:
+
+  - Fixed deprecation warnings for utctime, sqlite, ImageMath.eval, mock_s3.
+  - Fix entrypoint.sh to create default MapProxy configurations if none are found.
+  - Allowed the trivy security scan workflow to write the results to the GitHub security tab.
+  - We are not allowing the deprecated TLS Versions 1.1 or lower for connections to servers anymore.
+
+
+4.0.2 2025-04-10
+~~~~~~~~~~~~~~~~
+
+Fixes:
+
+- Security fix to prevent XSS injections in demo pages
+- Security fix to prevent reading file urls
+
+
+4.0.1 2025-03-25
+~~~~~~~~~~~~~~~~
+
+Improvements:
+
+  - Added docs regarding OGC API support
+
+Fixes:
+
+  - WMTS Demo now works if kvp is disabled
+
+
+4.0.0 2025-03-21
+~~~~~~~~~~~~~~~~
+
+Breaking:
+  - Removed legacy seed configuration.
+  - Removed Python 3.8 support.
+  - Removed riak support as the client library is not maintained anymore. If you rely on the riak support you have to
+    continue to use version 3.1.3 with Python 3.8.
+
+Improvements:
+
+  - The tile removal and refresh code is improved by simplifying the usage of `remove_timestamp` and `before_timestamp`
+    and complementing them by new `remove_all` and `refresh_all` parameters.
+  - Add a default logging config to the docker images.
+  - Add environment variables to the docker images to enable and configure multiapp support.
+  - Added a docker compose file to make it easy to run & build docker images and to use as reference.
+  - Updated and improved the documentation about usage of the docker images.
+
+Maintenance:
+
+  - Use python build instead of invoking setup.py.
+  - Removal of the six library.
+  - Removed array initializers in function signatures.
+
+Fixes:
+
+  - Added `AdminstrativeArea` to WMTS serviceprovider metadata.
+  - Fixed spelling & grammar in seed.rst.
+  - Fixed problem with combined usage of `coverage` and the `remove_all` cache config parameters.
+  - Fixed missing dimension parameters in the `remove_tile` functions of various caches.
+
+
+3.1.3 2024-11-26
+~~~~~~~~~~~~~~~~
+
+Maintenance:
+
+  - Several dependencies for the tests and GitHub actions have been updated
+  - Spelling and grammar mistakes in the documentation corrected
+
+Fixes:
+
+  - The chmod to update file permissions is now only called if the file was freshly created
+  - A bug with clipping polygons that become multi polygons due to the clipping is now fixed
+
+
+3.1.2 2024-11-20
+~~~~~~~~~~~~~~~~
+
+Maintenance:
+
+  - Several dependencies for the tests and github actions have been updated
+
+Fixes:
+
+  - Metadata URLs are now required to have a `url`, `type` and `format`
+  - The layers of a wms `req` are now correctly splitted at `,` for validation
+  - The validation for seeding configs is fixed
+  - Single color tiles are now created with configured file_permissions
+
+
+3.1.1 2024-11-15
+~~~~~~~~~~~~~~~~
+
+Maintenance:
+
+  - Werkzeug version is no longer pinned and can be chosen freely.
+
+Fixes:
+
+  - The permission handling for file locks now also sets permissions on the files not just on the directories.
+
+
+3.1.0 2024-10-22
+~~~~~~~~~~~~~~~~
+
+Improvements:
+
+  - Add new config parameters `file_permissions` and `directory_permissions` to set file and directory
+    permissions on newly created cache files and directories.
+
+Maintenance:
+
+  - Dependency updates
+
+Fixes:
+
+  - Fix transparency in TMS demo page.
+
+
+3.0.1 2024-08-27
+~~~~~~~~~~~~~~~~
+
+Fixes:
+
+  - Fix capabilities links in demo page and config template
+  - Trivy report format
+
+
+3.0.0 2024-08-27
+~~~~~~~~~~~~~~~~
+
+Breaking:
+
+  - Add proper XML Exception when service parameter disabled / invalid or missing
+    In the past MapProxy returned WMS Capabilities when no explicit service parameter was given in
+    GetCapabilities requests. With this change, an OGC exception will be returned instead.
+    Invalid service types now also return a proper exception instead of an `internal error`.
+    Besides, the status code of exception responses now have a 400 or 500 code instead of 200
+    for better conformity.
+
+Maintenance:
+
+  - Add test for seeding sqlite cache
+  - Documentation updates and clarifications
+  - Dependency updates
+
+Fixes:
+
+  - Fix gh-pages workflow
+
+
+2.2.0 2024-07-24
+~~~~~~~~~~~~~~~~
+
+Improvements:
+
+  - Add timeout to SQLite connect for geopackages. This helps against locking exceptions
+  - Improvement of documentation, typos, wrong cli commands, old python2 stuff
+  - The WMTS capabilites will now advertise the WMS GetLegendGraphic as a LegendURL if both services are active
+  - It is possible now to configure LegendURLs that should be shown in the WMTS capabilities
+  - A new method for plugins to intercept and modify requests made to MapProxy was added.
+
+Maintenance:
+
+  - Removal of debian package information
+  - Fix docs workflow
+
+Fixes:
+
+  - Remove import of the packaging library that does not appear in the `install_requires`
+  - Only install and use `importlib_resources` in python 3.8
+
+
+2.1.1 2024-07-16
+~~~~~~~~~~~~~~~~
+Fixes:
+
+  - Fix version of jsonschema in setup.py
+  - Fix alpine docker build
+  - Fix doc generation workflow
+
+
+2.1.0 2024-07-16
+~~~~~~~~~~~~~~~~
+Improvements:
+
+  - Configuration files can no be splitted into multiple files
+  - Added jsonschema to validate configuration files
+  - New theme for documentation, overall improvement of the documentation and github workflow for automatic creation
+  - Improved docker images with better entrypoint and workflow to build docker images with a builder image
+  - Added release workflow for automatic publishing on pypi and github
+
+Maintenance:
+
+  - Dependency updates
+  - Remove python 2 compatibility functions
+  - Added flake8 linting
+  - setup.py contains now required libraries
+  - Remove depracated `pkg_resources` in favor of `importlib_resources`
+  - Addressed shapely deprecations
+
+Fixes:
+
+  - Ensure make_app always returns MapProxyApp instance
+  - Allow feature info responses of combined sources to be empty
+  - Fix broken TMS demo
+  - Fix problem with dimensions in load_tile_metadata
+  - Fix GeoTIFF Headers
+
 
 2.0.2 2024-01-10
 ~~~~~~~~~~~~~~~~

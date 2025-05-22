@@ -5,9 +5,9 @@ This tutorial guides you to the MapProxy installation process on Unix systems. F
 
 This tutorial was created and tested with Debian and Ubuntu, if you're installing MapProxy on a different system you might need to change some package names.
 
-MapProxy is `registered at the Python Package Index <https://pypi.org/project/MapProxy/>`_ (PyPI). If you have Python 2.7.9 or higher, you can install MapProxy with::
+MapProxy is `registered at the Python Package Index <https://pypi.org/project/MapProxy/>`_ (PyPI). If you have Python 3.9 or higher, you can install MapProxy with::
 
-  sudo python -m pip install MapProxy
+  python -m pip install MapProxy
 
 This is really, easy `but` we recommend to install MapProxy into a `virtual Python environment`_. A ``virtualenv`` is a self-contained Python installation where you can install arbitrary Python packages without affecting the system installation. You also don't need root permissions for the installation.
 
@@ -21,17 +21,17 @@ Create a new virtual environment
 
 ``virtualenv`` is available as ``python-virtualenv`` on most Linux systems. You can also `install Virtualenv from source <https://virtualenv.pypa.io/en/latest/installation.html>`_.
 
-To create a new environment with the name ``mapproxy`` call::
+To create a new environment with the name ``venv`` call::
 
-    virtualenv --system-site-packages mapproxy
+    virtualenv --system-site-packages venv
 
-You should now have a Python installation under ``mapproxy/bin/python``.
+You should now have a Python installation under ``venv/bin/python``.
 
 .. note:: Virtualenv will use your Python system packages (like ``python-imaging`` or ``python-yaml``) only when the virtualenv was created with the ``--system-site-packages`` option.
 
-You need to either prefix all commands with ``mapproxy/bin``, set your ``PATH`` variable to include the bin directory or `activate` the virtualenv with::
+You need to either prefix all commands with ``venv/bin``, set your ``PATH`` variable to include the bin directory or `activate` the virtualenv with::
 
-    source mapproxy/bin/activate
+    source venv/bin/activate
 
 This will change the ``PATH`` for your `current` session.
 
@@ -39,7 +39,7 @@ This will change the ``PATH`` for your `current` session.
 Install Dependencies
 --------------------
 
-MapProxy is written in Python, thus you will need a working Python installation. MapProxy works with Python 3.8 or higher, which should already be installed with most Linux distributions.
+MapProxy is written in Python, thus you will need a working Python installation. MapProxy works with Python 3.9 or higher, which should already be installed with most Linux distributions.
 
 MapProxy requires a few third-party libraries that are required to run. There are different ways to install each dependency. Read :ref:`dependency_details` for a list of all required and optional dependencies.
 
@@ -82,11 +82,6 @@ You can install a new version of Pillow from source with::
     zlib1g-dev libfreetype6-dev
   pip install Pillow
 
-
-YAML
-~~~~
-
-MapProxy uses YAML for the configuration parsing. It is available as ``python-yaml``, but you can also install it as a Python package with ``pip install PyYAML``.
 
 Shapely and GEOS *(optional)*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -152,8 +147,7 @@ Start the test server
 
 To start a test server::
 
-    cd mymapproxy
-    mapproxy-util serve-develop mapproxy.yaml
+    mapproxy-util serve-develop mymapproxy/mapproxy.yaml
 
 There is already a test layer configured that obtains data from the `Omniscale OpenStreetMap WMS`_. Feel free to use this service for testing.
 

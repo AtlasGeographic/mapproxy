@@ -16,7 +16,6 @@
 import glob
 import hashlib
 import os
-import sqlite3
 import threading
 import time
 from io import BytesIO
@@ -26,6 +25,7 @@ from mapproxy.image import ImageSource
 from mapproxy.cache.base import TileCacheBase, tile_buffer, REMOVE_ON_UNLOCK
 from mapproxy.util.fs import ensure_directory
 from mapproxy.util.lock import FileLock
+from mapproxy.util.sqlite3 import sqlite3
 
 import logging
 log = logging.getLogger(__name__)
@@ -45,11 +45,14 @@ def sqlite_datetime_to_timestamp(datetime):
 class MBTilesCache(TileCacheBase):
     supports_timestamp = False
 
-    def __init__(self, mbtile_file, with_timestamps=False, timeout=30, wal=False, ttl=0, coverage=None):
+    def __init__(self, mbtile_file, with_timestamps=False, timeout=30, wal=False, ttl=0, coverage=None,
+                 directory_permissions=None, file_permissions=None):
         super(MBTilesCache, self).__init__(coverage)
         md5 = hashlib.new('md5', mbtile_file.encode('utf-8'), usedforsecurity=False)
         self.lock_cache_id = 'mbtiles-' + md5.hexdigest()
         self.mbtile_file = mbtile_file
+        self.directory_permissions = directory_permissions
+        self.file_permissions = file_permissions
         self.supports_timestamp = with_timestamps
         self.ttl = with_timestamps and ttl or 0
         self.timeout = timeout
@@ -74,59 +77,61 @@ class MBTilesCache(TileCacheBase):
 
     def ensure_mbtile(self):
         if not os.path.exists(self.mbtile_file):
-            with FileLock(self.mbtile_file + '.init.lck',
-                          remove_on_unlock=REMOVE_ON_UNLOCK):
+            with FileLock(self.mbtile_file + '.init.lck', remove_on_unlock=REMOVE_ON_UNLOCK,
+                          directory_permissions=self.directory_permissions, file_permissions=self.file_permissions):
                 if not os.path.exists(self.mbtile_file):
-                    ensure_directory(self.mbtile_file)
+                    ensure_directory(self.mbtile_file, self.directory_permissions)
                     self._initialize_mbtile()
 
     def _initialize_mbtile(self):
         log.info('initializing MBTile file %s', self.mbtile_file)
-        db = sqlite3.connect(self.mbtile_file)
+        with sqlite3.connect(self.mbtile_file) as db:
+            if self.wal:
+                db.execute('PRAGMA journal_mode=wal')
 
-        if self.wal:
-            db.execute('PRAGMA journal_mode=wal')
-
-        stmt = """
-            CREATE TABLE tiles (
-                zoom_level integer,
-                tile_column integer,
-                tile_row integer,
-                tile_data blob
-        """
-
-        if self.supports_timestamp:
-            stmt += """
-                , last_modified datetime DEFAULT (datetime('now','localtime'))
+            stmt = """
+                CREATE TABLE tiles (
+                    zoom_level integer,
+                    tile_column integer,
+                    tile_row integer,
+                    tile_data blob
             """
-        stmt += """
-            );
-        """
-        db.execute(stmt)
 
-        db.execute("""
-            CREATE TABLE metadata (name text, value text);
-        """)
-        db.execute("""
-            CREATE UNIQUE INDEX idx_tile on tiles
-                (zoom_level, tile_column, tile_row);
-        """)
-        db.commit()
-        db.close()
+            if self.supports_timestamp:
+                stmt += """
+                    , last_modified datetime DEFAULT (datetime('now','localtime'))
+                """
+            stmt += """
+                );
+            """
+            db.execute(stmt)
+
+            db.execute("""
+                CREATE TABLE metadata (name text, value text);
+            """)
+            db.execute("""
+                CREATE UNIQUE INDEX idx_tile on tiles
+                    (zoom_level, tile_column, tile_row);
+            """)
+            db.commit()
+
+        if self.file_permissions:
+            permission = int(self.file_permissions, base=8)
+            log.info("setting file permissions on MBTile file: ", permission)
+            os.chmod(self.mbtile_file, permission)
 
     def update_metadata(self, name='', description='', version=1, overlay=True, format='png'):
-        db = sqlite3.connect(self.mbtile_file)
-        db.execute("""
+        self.db.execute("""
             CREATE TABLE IF NOT EXISTS metadata (name text, value text);
         """)
-        db.execute("""DELETE FROM metadata;""")
+        self.db.execute("""DELETE FROM metadata;""")
 
         if overlay:
             layer_type = 'overlay'
         else:
             layer_type = 'baselayer'
 
-        db.executemany("""
+        self.db.executemany("""
             INSERT INTO metadata (name, value) VALUES (?,?)
             """,
                        (
@@ -137,8 +142,7 @@ class MBTilesCache(TileCacheBase):
                            ('format', format),
                        )
                        )
-        db.commit()
-        db.close()
+        self.db.commit()
 
     def is_cached(self, tile, dimensions=None):
         if tile.coord is None:
@@ -268,7 +272,7 @@ class MBTilesCache(TileCacheBase):
 
         return loaded_tiles == len(tile_dict)
 
-    def remove_tile(self, tile):
+    def remove_tile(self, tile, dimensions=None):
         cursor = self.db.cursor()
         cursor.execute(
             "DELETE FROM tiles WHERE (tile_column = ? AND tile_row = ? AND zoom_level = ?)",
@@ -278,8 +282,8 @@ class MBTilesCache(TileCacheBase):
             return True
         return False
 
-    def remove_level_tiles_before(self, level, timestamp):
-        if timestamp == 0:
+    def remove_level_tiles_before(self, level, timestamp=None, remove_all=False):
+        if remove_all:
             cursor = self.db.cursor()
             cursor.execute(
                 "DELETE FROM tiles WHERE (zoom_level = ?)",
@@ -311,11 +315,14 @@ class MBTilesCache(TileCacheBase):
 class MBTilesLevelCache(TileCacheBase):
     supports_timestamp = True
 
-    def __init__(self, mbtiles_dir, timeout=30, wal=False, ttl=0, coverage=None):
+    def __init__(self, mbtiles_dir, timeout=30, wal=False, ttl=0, coverage=None,
+                 directory_permissions=None, file_permissions=None):
         super(MBTilesLevelCache, self).__init__(coverage)
         md5 = hashlib.new('md5', mbtiles_dir.encode('utf-8'), usedforsecurity=False)
         self.lock_cache_id = 'sqlite-' + md5.hexdigest()
         self.cache_dir = mbtiles_dir
+        self.directory_permissions = directory_permissions
+        self.file_permissions = file_permissions
         self._mbtiles = {}
         self.timeout = timeout
         self.wal = wal
@@ -335,7 +342,9 @@ class MBTilesLevelCache(TileCacheBase):
                     timeout=self.timeout,
                     wal=self.wal,
                     ttl=self.ttl,
-                    coverage=self.coverage
+                    coverage=self.coverage,
+                    directory_permissions=self.directory_permissions,
+                    file_permissions=self.file_permissions
                 )
 
         return self._mbtiles[level]
@@ -399,9 +408,9 @@ class MBTilesLevelCache(TileCacheBase):
     def load_tile_metadata(self, tile, dimensions=None):
         self.load_tile(tile, dimensions=dimensions)
 
-    def remove_level_tiles_before(self, level, timestamp):
+    def remove_level_tiles_before(self, level, timestamp=None, remove_all=False):
         level_cache = self._get_level(level)
-        if timestamp == 0:
+        if remove_all:
             level_cache.cleanup()
             os.unlink(level_cache.mbtile_file)
             for file in glob.glob("%s-*" % glob.escape(level_cache.mbtile_file)):

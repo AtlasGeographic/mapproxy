@@ -21,6 +21,7 @@ import pytest
 import json
 
 from mapproxy.compat.image import Image
+from mapproxy.request.base import BaseRequest
 from mapproxy.request.wms import (
     WMS111MapRequest,
     WMS111CapabilitiesRequest,
@@ -28,12 +29,14 @@ from mapproxy.request.wms import (
     WMS111LegendGraphicRequest,
     WMS130LegendGraphicRequest,
 )
+from mapproxy.request.wmts import WMTS100CapabilitiesRequest
 
 from mapproxy.test.image import is_png, tmp_image
 from mapproxy.test.helper import validate_with_dtd, validate_with_xsd
 from mapproxy.test.http import mock_httpd
 from mapproxy.test.system import SysTest
 from mapproxy.test.system.test_wms import is_111_capa, assert_xpath_wms130, ns130
+from mapproxy.test.system.test_wmts import assert_xpath_wmts, ns_wmts
 
 
 @pytest.fixture(scope="module")
@@ -63,6 +66,13 @@ class TestWMSLegendgraphic(SysTest):
         self.common_lg_req_130 = WMS130LegendGraphicRequest(
             url="/service?",
             param=dict(format="image/png", layer="wms_legend", sld_version="1.1.0"),
+        )
+        self.common_wmts_cap_req = WMTS100CapabilitiesRequest(
+            url="/service?",
+            param=dict(service="WMTS", version="1.0.0", request="GetCapabilities"),
+        )
+        self.common_wmts_rest_cap_req = BaseRequest(
+            url="/wmts/1.0.0/WMTSCapabilities.xml"
         )
 
     # test_00, test_01, test_02 need to run first in order to run the other tests properly
@@ -145,8 +155,8 @@ class TestWMSLegendgraphic(SysTest):
             xml.xpath("//Layer/Style/LegendURL/@height"),
         )
         assert legend_sizes == (
-            ["256", "256", "256", "256"],
-            ["512", "768", "256", "256"],
+            ["256", "256", "256", "256", "256"],
+            ["512", "768", "256", "256", "256"],
         )
         layer_urls = xml.xpath(
             "//Layer/Style/LegendURL/OnlineResource/@xlink:href", namespaces=ns130
@@ -202,8 +212,9 @@ class TestWMSLegendgraphic(SysTest):
 
     def test_get_legendgraphic_no_legend_111(self, app):
         self.common_lg_req_111.params["layer"] = "wms_no_legend"
-        resp = app.get(self.common_lg_req_111)
+        resp = app.get(self.common_lg_req_111, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
+        assert resp.status_code == 404
         xml = resp.lxml
         assert (
             "wms_no_legend has no legend graphic"
@@ -217,7 +228,7 @@ class TestWMSLegendgraphic(SysTest):
             .replace("sld_version", "invalid")
             .replace("format", "invalid")
         )
-        resp = app.get(req)
+        resp = app.get(req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         xml = resp.lxml
         assert "missing parameters" in xml.xpath("//ServiceException/text()")[0]
@@ -227,7 +238,7 @@ class TestWMSLegendgraphic(SysTest):
         req = str(self.common_lg_req_111).replace(
             "sld_version=1.1.0", "sld_version=1.0.0"
         )
-        resp = app.get(req)
+        resp = app.get(req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         xml = resp.lxml
         assert "invalid sld_version" in xml.xpath("//ServiceException/text()")[0]
@@ -235,8 +246,9 @@ class TestWMSLegendgraphic(SysTest):
 
     def test_get_legendgraphic_no_legend_130(self, app):
         self.common_lg_req_130.params["layer"] = "wms_no_legend"
-        resp = app.get(self.common_lg_req_130)
+        resp = app.get(self.common_lg_req_130, expect_errors=True)
         assert resp.content_type == "text/xml"
+        assert resp.status_code == 404
         xml = resp.lxml
         assert_xpath_wms130(xml, "/ogc:ServiceExceptionReport/@version", "1.3.0")
         assert_xpath_wms130(
@@ -248,7 +260,7 @@ class TestWMSLegendgraphic(SysTest):
 
     def test_get_legendgraphic_missing_params_130(self, app):
         req = str(self.common_lg_req_130).replace("format", "invalid")
-        resp = app.get(req)
+        resp = app.get(req, expect_errors=True)
         assert resp.content_type == "text/xml"
         xml = resp.lxml
         assert_xpath_wms130(xml, "/ogc:ServiceExceptionReport/@version", "1.3.0")
@@ -261,7 +273,7 @@ class TestWMSLegendgraphic(SysTest):
         req = str(self.common_lg_req_130).replace(
             "sld_version=1.1.0", "sld_version=1.0.0"
         )
-        resp = app.get(req)
+        resp = app.get(req, expect_errors=True)
         assert resp.content_type == "text/xml"
         xml = resp.lxml
         assert_xpath_wms130(xml, "/ogc:ServiceExceptionReport/@version", "1.3.0")
@@ -306,3 +318,29 @@ class TestWMSLegendgraphic(SysTest):
             json_data = json.loads(json_str)
             assert json_data['Legend'][0]['layerName'] == 'foo'
             assert json_data['Legend'][1]['layerName'] == 'bar'
+
+    def test_wmts_legend_url(self, app):
+        resp = app.get(self.common_wmts_cap_req)
+        assert resp.content_type == "application/xml"
+        xml = resp.lxml
+        assert_xpath_wmts(
+            xml,
+            '//wmts:Layer[1]/wmts:Style/wmts:LegendURL/@xlink:href',
+            'http://localhost/service?service=WMS&request=GetLegendGraphic&version=1.3.0&format=image%2Fpng'
+            '&layer=wmts_layer_legendurl'
+        )
+        assert xml.xpath('count(//wmts:Layer)', namespaces=ns_wmts) == 2
+        assert xml.xpath('count(//wmts:LegendURL)', namespaces=ns_wmts) == 1
+
+    def test_wmts_rest_legend_url(self, app):
+        resp = app.get(self.common_wmts_rest_cap_req)
+        assert resp.content_type == "application/xml"
+        xml = resp.lxml
+        assert_xpath_wmts(
+            xml,
+            '//wmts:Layer[1]/wmts:Style/wmts:LegendURL/@xlink:href',
+            'http://localhost/service?service=WMS&request=GetLegendGraphic&version=1.3.0&format=image%2Fpng'
+            '&layer=wmts_layer_legendurl'
+        )
+        assert xml.xpath('count(//wmts:Layer)', namespaces=ns_wmts) == 2
+        assert xml.xpath('count(//wmts:LegendURL)', namespaces=ns_wmts) == 1

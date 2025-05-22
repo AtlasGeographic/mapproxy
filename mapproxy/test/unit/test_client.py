@@ -15,7 +15,6 @@
 
 
 import os
-import sys
 import time
 
 import pytest
@@ -23,7 +22,7 @@ import pytest
 from mapproxy.client.http import HTTPClient, HTTPClientError
 from mapproxy.client.tile import TileClient, TileURLTemplate
 from mapproxy.client.wms import WMSClient, WMSInfoClient
-from mapproxy.grid import tile_grid
+from mapproxy.grid.tile_grid import tile_grid
 from mapproxy.layer import MapQuery, InfoQuery
 from mapproxy.request.wms import (
     WMS111MapRequest,
@@ -51,7 +50,6 @@ class TestHTTPClient(object):
                                               {'status': '200', 'body': b''})]):
             self.client.open(TESTSERVER_URL + '/service', data=b"foo=bar")
 
-    @pytest.mark.skipif(sys.version_info < (3,), reason='HEAD request not supported by BaseHTTPRequestHandler in Py 2')
     def test_head(self):
         with mock_httpd(TESTSERVER_ADDRESS, [({'path': '/service', 'method': 'HEAD'},
                                               {'status': '200'})]):
@@ -110,6 +108,7 @@ class TestHTTPClient(object):
             assert False, 'expected HTTPClientError'
 
     @pytest.mark.online
+    @pytest.mark.flaky(reruns=5, reruns_delay=2)
     def test_https_untrusted_root(self):
         self.client = HTTPClient('https://untrusted-root.badssl.com/')
         try:
@@ -118,12 +117,14 @@ class TestHTTPClient(object):
             assert_re(e.args[0], r'Could not verify connection to URL')
 
     @pytest.mark.online
+    @pytest.mark.flaky(reruns=5, reruns_delay=2)
     def test_https_insecure(self):
         self.client = HTTPClient(
             'https://untrusted-root.badssl.com/', insecure=True)
         self.client.open('https://untrusted-root.badssl.com/')
 
     @pytest.mark.online
+    @pytest.mark.flaky(reruns=5, reruns_delay=2)
     def test_https_valid_ca_cert_file(self):
         # verify with fixed ca_certs file
         cert_file = '/etc/ssl/certs/ca-certificates.crt'
@@ -138,11 +139,13 @@ class TestHTTPClient(object):
                 self.client.open('https://www.google.com/')
 
     @pytest.mark.online
+    @pytest.mark.flaky(reruns=5, reruns_delay=2)
     def test_https_valid_default_cert(self):
         self.client = HTTPClient('https://www.google.com/')
         self.client.open('https://www.google.com/')
 
     @pytest.mark.online
+    @pytest.mark.flaky(reruns=5, reruns_delay=2)
     def test_https_invalid_cert(self):
         # load 'wrong' root cert
         with TempFile() as tmp:
@@ -408,7 +411,7 @@ class TestCombinedWMSClient(object):
 class TestWMSInfoClient(object):
     def test_transform_fi_request_supported_srs(self):
         req = WMS111FeatureInfoRequest(url=TESTSERVER_URL + '/service?map=foo', param={'layers': 'foo'})
-        http = MockHTTPClient()
+        http = MockHTTPClient(response_type='text')
         wms = WMSInfoClient(req, http_client=http, supported_srs=SupportedSRS([SRS(25832)]))
         fi_req = InfoQuery((8, 50, 9, 51), (512, 512),
                            SRS(4326), (128, 64), 'text/plain')
@@ -425,7 +428,7 @@ class TestWMSInfoClient(object):
     def test_transform_fi_request(self):
         req = WMS111FeatureInfoRequest(
             url=TESTSERVER_URL + '/service?map=foo', param={'layers': 'foo', 'srs': 'EPSG:25832'})
-        http = MockHTTPClient()
+        http = MockHTTPClient(response_type='text')
         wms = WMSInfoClient(req, http_client=http)
         fi_req = InfoQuery((8, 50, 9, 51), (512, 512),
                            SRS(4326), (128, 64), 'text/plain')

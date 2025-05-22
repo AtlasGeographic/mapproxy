@@ -49,6 +49,8 @@ Behind an HTTP server or proxy
 
 Both approaches require a configuration that maps your MapProxy configuration with the MapProxy application. You can write a small script file for that.
 
+.. note:: In production mode it is recommended to disable the demo service.
+
 .. _server_script:
 
 Server script
@@ -285,11 +287,11 @@ MultiMapProxy
 
 .. versionadded:: 1.2.0
 
-You can run multiple MapProxy instances (configurations) within one process with the MultiMapProxy application.
+You can run multiple MapProxy apps (configurations) within one process with MultiMapProxy.
 
 MultiMapProxy can dynamically load configurations. You can put all configurations into one directory and MapProxy maps each file to a URL: ``conf/proj1.yaml`` is available at ``http://hostname/proj1/``.
 
-Each configuration will be loaded on demand and MapProxy caches each loaded instance. The configuration will be reloaded if the file changes.
+Each configuration will be loaded on demand and MapProxy caches each loaded app. The configuration will be reloaded if the file changes.
 
 MultiMapProxy as the following options:
 
@@ -308,5 +310,5 @@ There is a ``make_wsgi_app`` function in the ``mapproxy.multiapp`` package that 
 .. code-block:: python
 
   from mapproxy.multiapp import make_wsgi_app
-  application = make_wsgi_app('/path/to.projects', allow_listing=True)
+  application = make_wsgi_app('/path/to.configs', allow_listing=True)
 

@@ -11,7 +11,7 @@
         <ows:Keyword{{if kw.vocabulary}} vocabulary="{{kw.vocabulary}}"{{endif}}>{{keyword}}</ows:Keyword>
       {{endfor}}
     {{endfor}}
-    </ows:Keywords> 
+    </ows:Keywords>
     {{endif}}
     <ows:ServiceType>OGC WMTS</ows:ServiceType>
     <ows:ServiceTypeVersion>1.0.0</ows:ServiceTypeVersion>
@@ -34,6 +34,7 @@
         <ows:Address>
           <ows:DeliveryPoint>{{service.contact.organization}}</ows:DeliveryPoint>
           <ows:City>{{service.contact.city}}</ows:City>
+          <ows:AdministrativeArea>{{service.contact.state}}</ows:AdministrativeArea>
           <ows:PostalCode>{{service.contact.postcode}}</ows:PostalCode>
           <ows:Country>{{service.contact.country}}</ows:Country>
           <ows:ElectronicMailAddress>{{service.contact.email}}</ows:ElectronicMailAddress>
@@ -97,6 +98,12 @@
       <ows:Identifier>{{layer.name}}</ows:Identifier>
       <Style>
         <ows:Identifier>default</ows:Identifier>
+        {{if legendurls[layer.name]}}
+        <LegendURL
+          format="image/png"
+          xlink:href="{{legendurls[layer.name]}}"
+        />
+        {{endif}}
       </Style>
       <Format>image/{{layer.format}}</Format>
       {{if layer.queryable}}

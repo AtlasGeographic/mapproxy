@@ -50,6 +50,11 @@
                   "description": "The metadata config for the wms service",
                   "$ref": "#/$defs/metadata"
                 },
+                "inspire_md": {
+                  "title": "md",
+                  "description": "The inspire metadata config for the wms service",
+                  "type": "object"
+                },
                 "srs": {
                   "title": "srs",
                   "description": "Supported SRS of the WMS service",
@@ -387,6 +392,14 @@
           "description": "URL to an image used as a legend for this layer",
           "type": "string"
         },
+        "wmts_rest_legendurl": {
+          "description": "A static legendurl for the wmts rest capabilites",
+          "type": "string"
+        },
+        "wmts_kvp_legendurl": {
+          "description": "A static legendurl for the wmts kvp capabilites",
+          "type": "string"
+        },
         "md": {
           "title": "md",
           "description": "Additional metadata for this layer",
@@ -600,7 +613,8 @@
           "title": "cache",
           "description": "Configure type of the cache"
         }
-      }
+      },
+      "required": ["sources"]
     },
 
     "metaSize": {
@@ -701,7 +715,14 @@
               "type": "string"
             },
             "postcode": {
-              "type": "integer"
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
             },
             "state": {
               "type": "string"
@@ -747,6 +768,26 @@
                 }
               }
             }
+          }
+        },
+        "metadata": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string"
+              }
+            },
+            "required": ["url", "type", "format"]
           }
         }
       }

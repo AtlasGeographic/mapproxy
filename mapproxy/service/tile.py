@@ -19,6 +19,7 @@ from mapproxy.template import template_loader, bunch
 
 import math
 import time
+from collections import OrderedDict
 
 from mapproxy.response import Response
 from mapproxy.exception import RequestError
@@ -31,7 +32,6 @@ from mapproxy.grid import default_bboxs
 from mapproxy.image import BlankImageSource
 from mapproxy.image.opts import ImageOptions
 from mapproxy.image.mask import mask_image_source_from_coverage
-from mapproxy.util.ext.odict import odict
 from mapproxy.util.coverage import load_limited_to
 
 import logging
@@ -153,7 +153,7 @@ class TileServer(Server):
                 return self.layers
             if result['authorized'] == 'none':
                 raise RequestError('forbidden', status=403)
-            allowed_layers = odict()
+            allowed_layers = OrderedDict()
             for layer in self.layers.values():
                 if result['layers'].get(layer.name, {}).get('tile', False) is True:
                     allowed_layers[layer.name] = layer
@@ -204,7 +204,7 @@ class TileServer(Server):
 
 
 class TileLayer(object):
-    def __init__(self, name, title, md, tile_manager, info_sources=[], dimensions=None):
+    def __init__(self, name, title, md, tile_manager, info_sources=None, dimensions=None, legend_version=None):
         """
         :param md: the layer metadata
         :param tile_manager: the layer tile manager
@@ -213,13 +213,14 @@ class TileLayer(object):
         self.title = title
         self.md = md
         self.tile_manager = tile_manager
-        self.info_sources = info_sources
+        self.info_sources = info_sources or []
         self.dimensions = dimensions
         self.grid = TileServiceGrid(tile_manager.grid)
         self.extent = self.md.get('extent').transform(tile_manager.grid.srs)
         self._empty_tile = None
         self._mixed_format = True if self.md.get('format', False) == 'mixed' else False
         self.empty_response_as_png = True
+        self.legend_version = legend_version
 
     @property
     def bbox(self):

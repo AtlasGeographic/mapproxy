@@ -15,6 +15,7 @@
 
 from __future__ import print_function, division
 
+from codecs import encode
 import re
 import sys
 import functools
@@ -141,7 +142,7 @@ class TestWMS111(SysTest):
 
     def test_invalid_request_type(self, app):
         req = str(self.common_map_req).replace("GetMap", "invalid")
-        resp = app.get(req)
+        resp = app.get(req, expect_errors=True)
         is_111_exception(resp.lxml, "unknown WMS request type 'invalid'")
 
     def test_endpoints(self, app):
@@ -180,26 +181,11 @@ class TestWMS111(SysTest):
         assert xml.xpath("//Layer/MetadataURL/@type")[0] == "TC211"
 
         layer_names = set(xml.xpath("//Layer/Layer/Name/text()"))
-        expected_names = set(
-            [
-                "direct_fwd_params",
-                "direct",
-                "wms_cache",
-                "wms_cache_100",
-                "wms_cache_130",
-                "wms_cache_transparent",
-                "wms_merge",
-                "tms_cache",
-                "tms_fi_cache",
-                "wms_cache_multi",
-                "wms_cache_link_single",
-                "wms_cache_110",
-                "watermark_cache",
-                "wms_managed_cookies_cache",
-            ]
-        )
+        expected_names = {"direct_fwd_params", "direct", "wms_cache", "wms_cache_100", "wms_cache_130",
+                          "wms_cache_transparent", "wms_merge", "tms_cache", "tms_fi_cache", "wms_cache_multi",
+                          "wms_cache_link_single", "wms_cache_110", "watermark_cache", "wms_managed_cookies_cache"}
         assert layer_names == expected_names
-        assert set(xml.xpath("//Layer/Layer[3]/Abstract/text()")) == set(["Some abstract"])
+        assert set(xml.xpath("//Layer/Layer[3]/Abstract/text()")) == {"Some abstract"}
 
         bboxs = xml.xpath("//Layer/Layer[1]/BoundingBox")
         bboxs = dict((e.attrib["SRS"], e) for e in bboxs)
@@ -220,20 +206,20 @@ class TestWMS111(SysTest):
 
     def test_invalid_layer(self, app):
         self.common_map_req.params["layers"] = "invalid"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         is_111_exception(resp.lxml, "unknown layer: invalid", "LayerNotDefined")
 
     def test_invalid_layer_img_exception(self, app):
         self.common_map_req.params["layers"] = "invalid"
         self.common_map_req.params["exceptions"] = "application/vnd.ogc.se_inimage"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "image/png"
         assert is_png(BytesIO(resp.body))
 
     def test_invalid_format(self, app):
         self.common_map_req.params["format"] = "image/ascii"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         is_111_exception(
             resp.lxml, "unsupported image format: image/ascii", "InvalidFormat"
@@ -262,20 +248,20 @@ class TestWMS111(SysTest):
 
     def test_invalid_srs(self, app):
         self.common_map_req.params["srs"] = "EPSG:1234"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         is_111_exception(resp.lxml, "unsupported srs: EPSG:1234", "InvalidSRS")
 
     def test_get_map_unknown_style(self, app):
         self.common_map_req.params["styles"] = "unknown"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         is_111_exception(resp.lxml, "unsupported styles: unknown", "StyleNotDefined")
 
     def test_get_map_too_large(self, app):
         self.common_map_req.params.size = (5000, 5000)
         self.common_map_req.params["exceptions"] = "application/vnd.ogc.se_inimage"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         # is xml, even if inimage was requested
         assert resp.content_type == "application/vnd.ogc.se_xml"
         is_111_exception(resp.lxml, "image size too large")
@@ -367,11 +353,11 @@ class TestWMS111(SysTest):
         resp = app.get(self.common_map_req)
         assert resp.content_type == "image/tiff"
         img = ImageSource(BytesIO(resp.body)).as_image()
-        assert_geotiff_tags(img, (-180, 80), (180/200.0, 80/200.0), 4326, False)
+        assert_geotiff_tags(img, (-180, 80), (180 / 200.0, 80 / 200.0), 4326, False)
 
     def test_get_map_xml_exception(self, app):
         self.common_map_req.params["bbox"] = "0,0,90,90"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         xml = resp.lxml
         assert xml.xpath("/ServiceExceptionReport/ServiceException/@code") == []
@@ -380,7 +366,7 @@ class TestWMS111(SysTest):
 
     def test_direct_layer_error(self, app):
         self.common_map_req.params["layers"] = "direct"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         xml = resp.lxml
         assert xml.xpath("/ServiceExceptionReport/ServiceException/@code") == []
@@ -403,7 +389,7 @@ class TestWMS111(SysTest):
             {"body": b"notanimage", "headers": {"content-type": "image/jpeg"}},
         )
         with mock_httpd(("localhost", 42423), [expected_req]):
-            resp = app.get(self.common_map_req)
+            resp = app.get(self.common_map_req, expect_errors=True)
             assert resp.content_type == "application/vnd.ogc.se_xml"
             xml = resp.lxml
             assert xml.xpath("/ServiceExceptionReport/ServiceException/@code") == []
@@ -428,7 +414,7 @@ class TestWMS111(SysTest):
             ("localhost", 42423), [expected_req], bbox_aware_query_comparator=True
         ):
             self.common_map_req.params["bbox"] = "0,0,180,90"
-            resp = app.get(self.common_map_req)
+            resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
 
         xml = resp.lxml
@@ -545,7 +531,7 @@ class TestWMS111(SysTest):
         url = (
             """/service?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&BBOX=7,2,-9,10&SRS=EPSG:4326&WIDTH=164&HEIGHT=388&LAYERS=wms_cache&STYLES=&FORMAT=image/png&TRANSPARENT=TRUE"""  # noqa
         )
-        resp = app.get(url)
+        resp = app.get(url, expect_errors=True)
         is_111_exception(resp.lxml, "invalid bbox 7,2,-9,10")
 
     def test_get_map_invalid_bbox2(self, app):
@@ -553,7 +539,7 @@ class TestWMS111(SysTest):
         url = (
             """/service?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&BBOX=-72988843.697212,-255661507.634227,142741550.188860,255661507.634227&SRS=EPSG:25833&WIDTH=164&HEIGHT=388&LAYERS=wms_cache_100&STYLES=&FORMAT=image/png&TRANSPARENT=TRUE"""  # noqa
         )
-        resp = app.get(url)
+        resp = app.get(url, expect_errors=True)
         # result depends on proj version
         is_111_exception(
             resp.lxml,
@@ -562,9 +548,9 @@ class TestWMS111(SysTest):
 
     def test_get_map_broken_bbox(self, app):
         url = (
-            """/service?VERSION=1.1.11&REQUEST=GetMap&SRS=EPSG:31468&BBOX=-20000855.0573254,2847125.18913603,-19329367.42767611,4239924.78564583&WIDTH=130&HEIGHT=62&LAYERS=wms_cache&STYLES=&FORMAT=image/png&TRANSPARENT=TRUE"""  # noqa
+            """/service?SERVICE=WMS&VERSION=1.1.11&REQUEST=GetMap&SRS=EPSG:31468&BBOX=-20000855.0573254,2847125.18913603,-19329367.42767611,4239924.78564583&WIDTH=130&HEIGHT=62&LAYERS=wms_cache&STYLES=&FORMAT=image/png&TRANSPARENT=TRUE"""  # noqa
         )
-        resp = app.get(url)
+        resp = app.get(url, expect_errors=True)
         is_111_exception(resp.lxml, "Could not transform BBOX: Invalid result.")
 
     def test_get_map100(self, app, base_dir, cache_dir):
@@ -660,6 +646,7 @@ class TestWMS111(SysTest):
             resp = app.get(self.common_fi_req)
             assert resp.content_type == "text/plain"
             assert resp.body == b"info"
+            assert resp.headers['Content-Type'] == 'text/plain; charset=utf-8'
 
     def test_get_featureinfo_coverage(self, app):
         self.common_fi_req.params["bbox"] = "-180.0,-90.0,180.0,90.0"
@@ -690,6 +677,7 @@ class TestWMS111(SysTest):
             resp = app.get(self.common_fi_req)
             assert resp.body == b"info"
             assert resp.content_type == "text/plain"
+            assert resp.headers['Content-Type'] == 'text/plain; charset=utf-8'
 
     def test_get_featureinfo_float(self, app):
         expected_req = (
@@ -708,6 +696,7 @@ class TestWMS111(SysTest):
             resp = app.get(self.common_fi_req)
             assert resp.content_type == "text/plain"
             assert resp.body == b"info"
+            assert resp.headers['Content-Type'] == 'text/plain; charset=utf-8'
 
     def test_get_featureinfo_transformed(self, app):
         expected_req = (
@@ -764,6 +753,25 @@ class TestWMS111(SysTest):
             resp = app.get(self.common_fi_req)
             assert resp.content_type == "text/html"
             assert resp.body == b"<html><body><p>info</p></body></html>"
+            assert resp.headers['Content-Type'] == 'text/html; charset=utf-8'
+
+    def test_get_featureinfo_info_format_special_chars(self, app):
+        expected_req = (
+            {
+                "path": r"/service?LAYERs=foo,bar&SERVICE=WMS&FORMAT=image%2Fpng"
+                        "&REQUEST=GetFeatureInfo&HEIGHT=200&SRS=EPSG%3A900913"
+                        "&VERSION=1.1.1&BBOX=1000.0,400.0,2000.0,1400.0&styles="
+                        "&WIDTH=200&QUERY_LAYERS=foo,bar&X=10&Y=20"
+                        "&info_format=text%2Fhtml"
+            },
+            {"body": encode(u"äüß▼"), "headers": {"content-type": "text/html"}},
+        )
+        with mock_httpd(("localhost", 42423), [expected_req]):
+            self.common_fi_req.params["info_format"] = "text/html"
+            resp = app.get(self.common_fi_req)
+            assert resp.content_type == "text/html"
+            assert resp.body == encode(u"<html><body><p>äüß▼</p></body></html>")
+            assert resp.headers['Content-Type'] == 'text/html; charset=utf-8'
 
     def test_get_featureinfo_130(self, app):
         expected_req = (
@@ -781,6 +789,7 @@ class TestWMS111(SysTest):
             resp = app.get(self.common_fi_req)
             assert resp.content_type == "text/plain"
             assert resp.body == b"info"
+            assert resp.headers['Content-Type'] == 'text/plain; charset=utf-8'
 
     def test_get_featureinfo_missing_params(self, app):
         expected_req = (
@@ -798,6 +807,7 @@ class TestWMS111(SysTest):
             resp = app.get(self.common_fi_req)
             assert resp.content_type == "text/plain"
             assert resp.body == b"info"
+            assert resp.headers['Content-Type'] == 'text/plain; charset=utf-8'
 
     def test_get_featureinfo_missing_params_strict(self, app):
         request_parser = app.app.handlers["service"].services["wms"].request_parser
@@ -808,7 +818,7 @@ class TestWMS111(SysTest):
 
             del self.common_fi_req.params["format"]
             del self.common_fi_req.params["styles"]
-            resp = app.get(self.common_fi_req)
+            resp = app.get(self.common_fi_req, expect_errors=True)
             xml = resp.lxml
             assert "missing parameters" in xml.xpath("//ServiceException/text()")[0]
             assert validate_with_dtd(xml, "wms/1.1.1/exception_1_1_1.dtd")
@@ -819,7 +829,7 @@ class TestWMS111(SysTest):
     def test_get_featureinfo_not_queryable(self, app):
         self.common_fi_req.params["query_layers"] = "tms_cache"
         self.common_fi_req.params["exceptions"] = "application/vnd.ogc.se_xml"
-        resp = app.get(self.common_fi_req)
+        resp = app.get(self.common_fi_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         xml = resp.lxml
         assert xml.xpath("/ServiceExceptionReport/ServiceException/@code") == []
@@ -889,30 +899,15 @@ class TestWMS110(SysTest):
         assert float(llbox.attrib["maxx"]) == pytest.approx(180.0)
 
         layer_names = set(xml.xpath("//Layer/Layer/Name/text()"))
-        expected_names = set(
-            [
-                "direct_fwd_params",
-                "direct",
-                "wms_cache",
-                "wms_cache_100",
-                "wms_cache_130",
-                "wms_cache_transparent",
-                "wms_merge",
-                "tms_cache",
-                "tms_fi_cache",
-                "wms_cache_multi",
-                "wms_cache_link_single",
-                "wms_cache_110",
-                "watermark_cache",
-                "wms_managed_cookies_cache",
-            ]
-        )
+        expected_names = {"direct_fwd_params", "direct", "wms_cache", "wms_cache_100", "wms_cache_130",
+                          "wms_cache_transparent", "wms_merge", "tms_cache", "tms_fi_cache", "wms_cache_multi",
+                          "wms_cache_link_single", "wms_cache_110", "watermark_cache", "wms_managed_cookies_cache"}
         assert layer_names == expected_names
         assert validate_with_dtd(xml, dtd_name="wms/1.1.0/capabilities_1_1_0.dtd")
 
     def test_invalid_layer(self, app):
         self.common_map_req.params["layers"] = "invalid"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         xml = resp.lxml
         assert xml.xpath("/ServiceExceptionReport/@version")[0] == "1.1.0"
@@ -925,7 +920,7 @@ class TestWMS110(SysTest):
 
     def test_invalid_format(self, app):
         self.common_map_req.params["format"] = "image/ascii"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         xml = resp.lxml
         assert xml.xpath("/ServiceExceptionReport/@version")[0] == "1.1.0"
@@ -955,7 +950,7 @@ class TestWMS110(SysTest):
 
     def test_invalid_srs(self, app):
         self.common_map_req.params["srs"] = "EPSG:1234"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         xml = resp.lxml
         assert xml.xpath("/ServiceExceptionReport/@version")[0] == "1.1.0"
@@ -980,7 +975,7 @@ class TestWMS110(SysTest):
 
     def test_get_map_xml_exception(self, app):
         self.common_map_req.params["bbox"] = "0,0,90,90"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         xml = resp.lxml
         assert xml.xpath("/ServiceExceptionReport/ServiceException/@code") == []
@@ -1053,7 +1048,7 @@ class TestWMS110(SysTest):
     def test_get_featureinfo_not_queryable(self, app):
         self.common_fi_req.params["query_layers"] = "tms_cache"
         self.common_fi_req.params["exceptions"] = "application/vnd.ogc.se_xml"
-        resp = app.get(self.common_fi_req)
+        resp = app.get(self.common_fi_req, expect_errors=True)
         assert resp.content_type == "application/vnd.ogc.se_xml"
         xml = resp.lxml
         assert xml.xpath("/ServiceExceptionReport/ServiceException/@code") == []
@@ -1139,35 +1134,20 @@ class TestWMS100(SysTest):
         assert resp.content_type == "text/xml"
         xml = resp.lxml
         assert (
-            xml.xpath("/WMT_MS_Capabilities/Service/Title/text()")[0] ==
-            u"MapProxy test fixture \u2603"
+                xml.xpath("/WMT_MS_Capabilities/Service/Title/text()")[0] ==
+                u"MapProxy test fixture \u2603"
         )
         layer_names = set(xml.xpath("//Layer/Layer/Name/text()"))
-        expected_names = set(
-            [
-                "direct_fwd_params",
-                "direct",
-                "wms_cache",
-                "wms_cache_100",
-                "wms_cache_130",
-                "wms_cache_transparent",
-                "wms_merge",
-                "tms_cache",
-                "tms_fi_cache",
-                "wms_cache_multi",
-                "wms_cache_link_single",
-                "wms_cache_110",
-                "watermark_cache",
-                "wms_managed_cookies_cache",
-            ]
-        )
+        expected_names = {"direct_fwd_params", "direct", "wms_cache", "wms_cache_100", "wms_cache_130",
+                          "wms_cache_transparent", "wms_merge", "tms_cache", "tms_fi_cache", "wms_cache_multi",
+                          "wms_cache_link_single", "wms_cache_110", "watermark_cache", "wms_managed_cookies_cache"}
         assert layer_names == expected_names
         # TODO srs
         assert validate_with_dtd(xml, dtd_name="wms/1.0.0/capabilities_1_0_0.dtd")
 
     def test_invalid_layer(self, app):
         self.common_map_req.params["layers"] = "invalid"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "text/xml"
         xml = resp.lxml
         assert xml.xpath("/WMTException/@version")[0] == "1.0.0"
@@ -1175,7 +1155,7 @@ class TestWMS100(SysTest):
 
     def test_invalid_format(self, app):
         self.common_map_req.params["format"] = "image/ascii"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "text/xml"
         xml = resp.lxml
         assert xml.xpath("/WMTException/@version")[0] == "1.0.0"
@@ -1201,7 +1181,7 @@ class TestWMS100(SysTest):
     def test_invalid_srs(self, app):
         self.common_map_req.params["srs"] = "EPSG:1234"
         print(self.common_map_req.complete_url)
-        resp = app.get(self.common_map_req.complete_url)
+        resp = app.get(self.common_map_req.complete_url, expect_errors=True)
         xml = resp.lxml
         assert xml.xpath("//WMTException/text()")[0].strip() == "unsupported srs: EPSG:1234"
 
@@ -1234,7 +1214,7 @@ class TestWMS100(SysTest):
 
     def test_get_map_xml_exception(self, app):
         self.common_map_req.params["bbox"] = "0,0,90,90"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         xml = resp.lxml
         assert "No response from URL" in xml.xpath("//WMTException/text()")[0]
 
@@ -1278,7 +1258,7 @@ class TestWMS100(SysTest):
     def test_get_featureinfo_not_queryable(self, app):
         self.common_fi_req.params["query_layers"] = "tms_cache"
         self.common_fi_req.params["exceptions"] = "application/vnd.ogc.se_xml"
-        resp = app.get(self.common_fi_req)
+        resp = app.get(self.common_fi_req, expect_errors=True)
         assert resp.content_type == "text/xml"
         xml = resp.lxml
         assert "tms_cache is not queryable" in xml.xpath("//WMTException/text()")[0]
@@ -1360,30 +1340,15 @@ class TestWMS130(SysTest):
         layer_names = set(
             xml.xpath("//wms:Layer/wms:Layer/wms:Name/text()", namespaces=ns130)
         )
-        expected_names = set(
-            [
-                "direct_fwd_params",
-                "direct",
-                "wms_cache",
-                "wms_cache_100",
-                "wms_cache_130",
-                "wms_cache_transparent",
-                "wms_merge",
-                "tms_cache",
-                "tms_fi_cache",
-                "wms_cache_multi",
-                "wms_cache_link_single",
-                "wms_cache_110",
-                "watermark_cache",
-                "wms_managed_cookies_cache",
-            ]
-        )
+        expected_names = {"direct_fwd_params", "direct", "wms_cache", "wms_cache_100", "wms_cache_130",
+                          "wms_cache_transparent", "wms_merge", "tms_cache", "tms_fi_cache", "wms_cache_multi",
+                          "wms_cache_link_single", "wms_cache_110", "watermark_cache", "wms_managed_cookies_cache"}
         assert layer_names == expected_names
         assert is_130_capa(xml)
 
     def test_invalid_layer(self, app):
         self.common_map_req.params["layers"] = "invalid"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "text/xml"
         xml = resp.lxml
         assert_xpath_wms130(xml, "/ogc:ServiceExceptionReport/@version", "1.3.0")
@@ -1397,7 +1362,7 @@ class TestWMS130(SysTest):
 
     def test_invalid_format(self, app):
         self.common_map_req.params["format"] = "image/ascii"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "text/xml"
         xml = resp.lxml
         assert_xpath_wms130(xml, "/ogc:ServiceExceptionReport/@version", "1.3.0")
@@ -1431,7 +1396,7 @@ class TestWMS130(SysTest):
         self.common_map_req.params["srs"] = "EPSG:1234"
         self.common_map_req.params["exceptions"] = "text/xml"
 
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "text/xml"
         xml = resp.lxml
         assert_xpath_wms130(
@@ -1457,7 +1422,7 @@ class TestWMS130(SysTest):
 
     def test_get_map_xml_exception(self, app):
         self.common_map_req.params["bbox"] = "0,0,90,90"
-        resp = app.get(self.common_map_req)
+        resp = app.get(self.common_map_req, expect_errors=True)
         assert resp.content_type == "text/xml"
         xml = resp.lxml
         assert (
@@ -1510,6 +1475,7 @@ class TestWMS130(SysTest):
             resp = app.get(self.common_fi_req)
             assert resp.content_type == "text/plain"
             assert resp.body == b"info"
+            assert resp.headers['Content-Type'] == 'text/plain; charset=utf-8'
 
     def test_get_featureinfo_111(self, app):
         expected_req = (
@@ -1527,6 +1493,7 @@ class TestWMS130(SysTest):
             resp = app.get(self.common_fi_req)
             assert resp.content_type == "text/plain"
             assert resp.body == b"info"
+            assert resp.headers['Content-Type'] == 'text/plain; charset=utf-8'
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="not supported on Windows")
